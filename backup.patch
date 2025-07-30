@@ -1,0 +1,296 @@
+diff --git a/app.py b/app.py
+index ee4ce5d..abfbd16 100644
+--- a/app.py
++++ b/app.py
+@@ -2,10 +2,13 @@ import sys
+ import os
+ import hashlib
+ import streamlit as st
++import requests
+ 
+-# Add backend/frontend to path
++# Backend API URL — adjust if deployed elsewhere
++BACKEND_URL = "http://localhost:8000"
++
++# Utilities for local state persistence
+ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+-from backend.art_sources import fetch_random_artwork
+ from frontend.utils import load_seen_urls, save_feedback
+ 
+ st.set_page_config(page_title="Art Explorer", layout="centered")
+@@ -15,8 +18,20 @@ st.title("🎨 Do You Like This Painting?")
+ if "seen_urls" not in st.session_state:
+     st.session_state.seen_urls = load_seen_urls()
+ 
++def fetch_artwork():
++    seen_list = list(st.session_state.seen_urls)
++    try:
++        response = requests.get(f"{BACKEND_URL}/artworks/random", params={"seen_urls": seen_list})
++        if response.status_code == 200:
++            return response.json()
++        else:
++            st.error(f"Backend error: {response.status_code}")
++    except Exception as e:
++        st.error(f"Error fetching artwork: {e}")
++    return None
++
+ if "art" not in st.session_state:
+-    st.session_state.art = fetch_random_artwork(st.session_state.seen_urls)
++    st.session_state.art = fetch_artwork()
+     st.session_state._just_loaded = True
+     st.rerun()
+ 
+@@ -33,27 +48,34 @@ def show_artwork(art):
+     st.markdown(f"**Department:** {art['department']}")
+     st.markdown(f"**Gallery:** {art['source']}")
+ 
+-def handle_feedback(liked: bool):
+-    save_feedback(st.session_state.art, liked=liked)
+-    st.session_state.seen_urls = load_seen_urls()
+-    st.session_state.art = fetch_random_artwork(st.session_state.seen_urls)
+-    st.rerun()
++def send_feedback(liked: bool):
++    try:
++        payload = {"art": st.session_state.art, "liked": liked}
++        response = requests.post(f"{BACKEND_URL}/feedback", json=payload)
++        if response.status_code == 200:
++            save_feedback(st.session_state.art, liked=liked)
++            st.session_state.seen_urls = load_seen_urls()
++            st.session_state.art = fetch_artwork()
++            st.rerun()
++        else:
++            st.error("Failed to submit feedback")
++    except Exception as e:
++        st.error(f"Error sending feedback: {e}")
+ 
+ # ------------------- Main Render -------------------
+ art = st.session_state.art
+ 
+-if art:
++if art and "message" not in art:
+     show_artwork(art)
+ 
+-    # Use hash of URL for button keys
+     image_key = hashlib.md5(art['image_url'].encode()).hexdigest()
+ 
+     col1, col2 = st.columns(2)
+     with col1:
+         if st.button("👍 Like", key=f"like_{image_key}"):
+-            handle_feedback(True)
++            send_feedback(True)
+     with col2:
+         if st.button("👎 Dislike", key=f"dislike_{image_key}"):
+-            handle_feedback(False)
++            send_feedback(False)
+ else:
+     st.warning("🎉 You've viewed all available artworks for now!")
+\ No newline at end of file
+diff --git a/art_api_cache.sqlite b/art_api_cache.sqlite
+deleted file mode 100644
+index e514188..0000000
+Binary files a/art_api_cache.sqlite and /dev/null differ
+diff --git a/backend/__init__.py b/backend/__init__.py
+deleted file mode 100644
+index 202443a..0000000
+--- a/backend/__init__.py
++++ /dev/null
+@@ -1,7 +0,0 @@
+-# backend/__init__.py
+-
+-# Remove this:
+-# from .art_sources import fetch_from_rijksmuseum
+-
+-# Keep only what you actually use:
+-from .art_sources import fetch_random_artwork
+\ No newline at end of file
+diff --git a/backend/art_sources.py b/backend/art_sources.py
+deleted file mode 100644
+index abd4164..0000000
+--- a/backend/art_sources.py
++++ /dev/null
+@@ -1,154 +0,0 @@
+-import random
+-import threading
+-from concurrent.futures import ThreadPoolExecutor, as_completed
+-
+-import requests_cache
+-
+-# --------------------------
+-# Thread-safe caching setup
+-# --------------------------
+-_thread_local = threading.local()
+-
+-def get_session():
+-    if not hasattr(_thread_local, "session"):
+-        _thread_local.session = requests_cache.CachedSession(
+-            "art_api_cache", expire_after=3600  # 1 hour cache
+-        )
+-    return _thread_local.session
+-
+-def is_valid_url(url):
+-    return isinstance(url, str) and url.startswith("http")
+-
+-# --------------------------
+-# Fetchers by Museum Source
+-# --------------------------
+-
+-def fetch_from_chicago(seen_urls):
+-    session = get_session()
+-    base_url = "https://api.artic.edu/api/v1/artworks"
+-    fields = "id,title,image_id,artist_display,date_display,place_of_origin,department_display"
+-
+-    for _ in range(10):
+-        page = random.randint(1, 1000)
+-        res = session.get(f"{base_url}?fields={fields}&limit=1&page={page}")
+-        if not res.ok:
+-            continue
+-
+-        data = res.json().get("data", [])
+-        if not data:
+-            continue
+-
+-        art = data[0]
+-        image_id = art.get("image_id")
+-        if not image_id:
+-            continue
+-
+-        image_url = f"https://www.artic.edu/iiif/2/{image_id}/full/843,/0/default.jpg"
+-        if not is_valid_url(image_url) or image_url in seen_urls:
+-            continue
+-
+-        return {
+-            "title": art.get("title", "Untitled"),
+-            "image_url": image_url,
+-            "artist": art.get("artist_display", "Unknown"),
+-            "date": art.get("date_display", "Unknown"),
+-            "origin": art.get("place_of_origin", "Unknown"),
+-            "department": art.get("department_display", "Unknown"),
+-            "source": "Art Institute of Chicago",
+-        }
+-    return None
+-
+-def fetch_from_met(seen_urls):
+-    session = get_session()
+-    ids_url = "https://collectionapi.metmuseum.org/public/collection/v1/objects"
+-    res = session.get(ids_url)
+-    if not res.ok:
+-        return None
+-
+-    all_ids = res.json().get("objectIDs", [])
+-    if not all_ids:
+-        return None
+-
+-    for _ in range(10):
+-        obj_id = random.choice(all_ids)
+-        obj_res = session.get(f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{obj_id}")
+-        if not obj_res.ok:
+-            continue
+-
+-        obj = obj_res.json()
+-        image_url = obj.get("primaryImageSmall")
+-        if not is_valid_url(image_url) or image_url in seen_urls:
+-            continue
+-
+-        return {
+-            "title": obj.get("title", "Untitled"),
+-            "image_url": image_url,
+-            "artist": obj.get("artistDisplayName", "Unknown"),
+-            "date": obj.get("objectDate", "Unknown"),
+-            "origin": obj.get("country", "Unknown"),
+-            "department": obj.get("department", "Unknown"),
+-            "source": "The Met",
+-        }
+-    return None
+-
+-def fetch_from_cleveland(seen_urls):
+-    session = get_session()
+-    base_url = "https://openaccess-api.clevelandart.org/api/artworks"
+-
+-    for _ in range(10):
+-        page = random.randint(1, 1000)
+-        res = session.get(f"{base_url}?has_image=1&limit=20&page={page}")
+-        if not res.ok:
+-            continue
+-
+-        artworks = res.json().get("data", [])
+-        if not artworks:
+-            continue
+-
+-        for art in artworks:
+-            image_info = art.get("images", {}).get("web", {})
+-            image_url = image_info.get("url", "")
+-            if not is_valid_url(image_url) or image_url in seen_urls:
+-                continue
+-
+-            return {
+-                "title": art.get("title", "Untitled"),
+-                "image_url": image_url,
+-                "artist": art.get("creators", [{}])[0].get("description", "Unknown"),
+-                "date": art.get("creation_date", "Unknown"),
+-                "origin": art.get("creation_place", "Unknown"),
+-                "department": art.get("department", "Unknown"),
+-                "source": "Cleveland Museum of Art",
+-            }
+-    return None
+-
+-# --------------------------
+-# Dispatcher
+-# --------------------------
+-
+-ART_SOURCES = {
+-    "chicago": fetch_from_chicago,
+-    "met": fetch_from_met,
+-    "cleveland": fetch_from_cleveland,
+-}
+-
+-def fetch_random_artwork(seen_urls):
+-    if not isinstance(seen_urls, set):
+-        seen_urls = set()
+-    else:
+-        seen_urls = {url for url in seen_urls if is_valid_url(url)}
+-
+-    with ThreadPoolExecutor(max_workers=len(ART_SOURCES)) as executor:
+-        futures = {
+-            executor.submit(fetcher, seen_urls): name
+-            for name, fetcher in ART_SOURCES.items()
+-        }
+-
+-        for future in as_completed(futures):
+-            try:
+-                art = future.result()
+-                if art:
+-                    return art
+-            except Exception as e:
+-                print(f"⚠️ Error fetching from {futures[future]}: {e}")
+-    return None
+\ No newline at end of file
+diff --git a/data/feedback.csv b/data/feedback.csv
+deleted file mode 100644
+index ab91686..0000000
+--- a/data/feedback.csv
++++ /dev/null
+@@ -1,3 +0,0 @@
+-title,image_url,liked,artist,date,origin,department,source,notes,rating
+-Beauford Delaney,"https://www.artic.edu/iiif/2/49b11242-2e0d-468e-1c67-127992fd0b89/full/843,/0/default.jpg",True,"Georgia O'Keeffe 
+-American, 1887–1986",1943,United States,Unknown,Art Institute of Chicago,,0
+diff --git a/feedback.csv b/feedback.csv
+deleted file mode 100644
+index 5f6e046..0000000
+--- a/feedback.csv
++++ /dev/null
+@@ -1,15 +0,0 @@
+-title,image_url,liked,artist,date,origin,department,source,notes,rating
+-Frontispiece for the Catalogue of the Work of Thomas De Leu,"https://www.artic.edu/iiif/2/bf37cb61-b3fe-2651-f280-58792c875b9b/full/843,/0/default.jpg",True,"Charles Meryon (French, 1821-1868)
+-printed by Pierron (French, 19th century)",1866,France,Unknown,Art Institute of Chicago,,0
+-"In the Heart of Modern Babylon, Piccadilly Circus, London, England",https://images.metmuseum.org/CRDImages/ph/web-large/DP73365.jpg,False,Strohmeyer & Wyman,1850s–1910s,,Photographs,The Met,,0
+-Hooked Rug,https://images.metmuseum.org/CRDImages/ad/web-large/DT227477.jpg,False,Lucy Trask Barnard,ca. 1860,United States,The American Wing,The Met,,0
+-Chest (?) of Akhenaten,https://images.metmuseum.org/CRDImages/eg/web-large/LC-21_9_598.jpg,True,,ca. 1353–1336 B.C.,Egypt,Egyptian Art,The Met,,0
+-"The Apse of the Church of St Martin-sur-Renelle, Paris","https://www.artic.edu/iiif/2/86bac45f-5500-e040-e858-dfc0dac0cfce/full/843,/0/default.jpg",False,"Charles Meryon (French, 1821-1868)
+-after Polyclés Langlois (French, 1814-1872)",1860,France,Unknown,Art Institute of Chicago,,0
+-"The River Seine and the Corner of the Mall, Paris","https://www.artic.edu/iiif/2/4e605f6a-767b-cafd-6fca-5672c671c5ca/full/843,/0/default.jpg",True,"Charles Meryon (French, 1821-1868)
+-after Reinier Nooms (Dutch, c. 1623-c. 1664)",1850,France,Unknown,Art Institute of Chicago,,0
+-Dance Blanket with Diving Whale and Raven Motifs,"https://www.artic.edu/iiif/2/58a44f4c-3d3f-c93a-a4bb-44c68f8b4267/full/843,/0/default.jpg",True,"Chilkat Tlingit
+-Southeastern Alaska, United States",Late 19th century,Northwest Coast,Unknown,Art Institute of Chicago,,0
+-Untitled,"https://www.artic.edu/iiif/2/212bbe29-7a78-6200-91fa-87a805db620d/full/843,/0/default.jpg",True,"Marcel Jean
+-French, 1900-1993",1947,France,Unknown,Art Institute of Chicago,,0
+-Renard Plays Another Trick on the She-Wolf from Hendrick van Alcmar's Renard The Fox,https://images.metmuseum.org/CRDImages/dp/web-large/DP837683.jpg,True,Allart van Everdingen,1650–75,,Drawings and Prints,The Met,,0
