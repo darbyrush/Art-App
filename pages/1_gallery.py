@@ -1,21 +1,17 @@
 import streamlit as st
-from utils import load_feedback_df, save_feedback, clear_feedback_csv
+from frontend.utils import load_feedback_df, save_feedback, clear_feedback_csv
 
 st.title("🖼️ Your Liked Artworks")
 
 def reload_feedback_df():
     df = load_feedback_df()
     if not df.empty and "liked" in df.columns:
-        # Normalize liked column to boolean True/False
         df["liked"] = df["liked"].astype(str).str.lower().map({
-            "true": True,
-            "false": False,
-            "like": True,
-            "dislike": False
+            "true": True, "false": False, "like": True, "dislike": False
         }).fillna(False)
     return df
 
-# Always reload fresh feedback DataFrame on every run — do NOT cache in session_state
+# Reload fresh data each time
 df = reload_feedback_df()
 
 if df.empty or not df["liked"].any():
@@ -23,7 +19,7 @@ if df.empty or not df["liked"].any():
 else:
     liked_df = df[df["liked"]].copy()
 
-    # Initialize or update notes and ratings only if liked artworks count changed
+    # Track liked count for session state reset
     if "liked_count" not in st.session_state or st.session_state.liked_count != len(liked_df):
         st.session_state.liked_count = len(liked_df)
         st.session_state.notes = {row.image_url: row.get("notes", "") for _, row in liked_df.iterrows()}
@@ -45,9 +41,9 @@ else:
             image_url = art["image_url"]
             title = art["title"]
             artist = art["artist"]
+            img_key = str(hash(image_url))
 
             with cols[col_idx]:
-                # Card styling
                 st.markdown(
                     f"""
                     <div style="
@@ -61,15 +57,11 @@ else:
                     """, unsafe_allow_html=True
                 )
 
-                # Toggle button with single click toggling
-                toggle_key = f"show_details_{image_url}"
+                toggle_key = f"show_details_{img_key}"
                 if toggle_key not in st.session_state:
                     st.session_state[toggle_key] = False
-                
-                if st.button(
-                    "Hide Details" if st.session_state[toggle_key] else "Show Details",
-                    key=f"toggle_{image_url}"
-                ):
+
+                if st.button("Hide Details" if st.session_state[toggle_key] else "Show Details", key=f"toggle_btn_{img_key}"):
                     st.session_state[toggle_key] = not st.session_state[toggle_key]
 
                 if st.session_state[toggle_key]:
@@ -78,18 +70,18 @@ else:
                     st.markdown(f"**Department:** {art['department']}")
                     st.markdown(f"**Gallery:** {art['source']}")
 
-                    note_key = f"note_{image_url}"
+                    note_key = f"note_{img_key}"
                     note = st.text_area("Your notes", value=st.session_state.notes.get(image_url, ""), key=note_key)
                     st.session_state.notes[image_url] = note
 
-                    rating_key = f"rating_{image_url}"
-                    rating_value = st.session_state.ratings.get(image_url, 3)
-                    rating_value = min(max(rating_value, 1), 5)
+                    rating_key = f"rating_{img_key}"
+                    rating_val = st.session_state.ratings.get(image_url, 3)
+                    rating_val = min(max(rating_val, 1), 5)
 
                     rating = st.radio(
                         "Rating (1-5 stars)",
                         options=[1, 2, 3, 4, 5],
-                        index=rating_value - 1,
+                        index=rating_val - 1,
                         key=rating_key,
                         format_func=lambda x: "⭐" * x
                     )
@@ -109,7 +101,6 @@ else:
                 "rating": st.session_state.ratings.get(art["image_url"], 3),
             }, "like", overwrite=True)
         st.success("Notes and ratings saved!")
-        # After saving, rerun to reload fresh data
         st.rerun()
 
     st.write("---")
@@ -129,13 +120,9 @@ else:
         if st.button("⚠️ Clear All Feedback", key="clear_feedback"):
             clear_feedback_csv()
             for key in list(st.session_state.keys()):
-                if key.startswith("note_") or key.startswith("rating_") or key.startswith("show_details_"):
+                if key.startswith(("note_", "rating_", "show_details_")):
                     del st.session_state[key]
-            if "notes" in st.session_state:
-                del st.session_state.notes
-            if "ratings" in st.session_state:
-                del st.session_state.ratings
-            if "liked_count" in st.session_state:
-                del st.session_state.liked_count
+            for k in ["notes", "ratings", "liked_count"]:
+                st.session_state.pop(k, None)
             st.success("Feedback history cleared.")
             st.rerun()
