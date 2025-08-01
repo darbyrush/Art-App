@@ -17,3 +17,14 @@ def save_feedback(art, liked: bool):
     seen.add(art["image_url"])
     with open(SEEN_FILE, "w") as f:
         json.dump(list(seen), f, indent=2)
+
+def standardize_artwork(title, artist, image_url, source, object_id=None, date=None, department=None):
+    return {
+        "title": title,
+        "artist": artist,
+        "image_url": image_url,
+        "source": source,
+        "object_id": object_id,
+        "date": date,
+        "department": department,
+    }
