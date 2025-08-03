@@ -39,6 +39,19 @@ def fetch_filtered_artwork(seen_urls, selected_sources):
         return random.choice(artworks)
     return None
 
+def test_single_source(source_name):
+    """Test a single source and return results"""
+    if source_name not in SOURCES:
+        return None
+    
+    try:
+        fetcher = SOURCES[source_name]
+        result = fetcher(set())
+        return result
+    except Exception as e:
+        st.error(f"Error testing {source_name}: {e}")
+        return None
+
 # ------------------- UI Helpers -------------------
 def show_artwork(art):
     image_url = art.get('image_url')
@@ -57,11 +70,26 @@ def show_artwork(art):
         st.error(f"Failed to load image: {e}")
         return
 
-    st.markdown(f"**Artist:** {art.get('artist', 'Unknown')}")
-    st.markdown(f"**Date:** {art.get('date', 'Unknown')}")
-    st.markdown(f"**Place of Origin:** {art.get('origin', 'Unknown')}")
-    st.markdown(f"**Department:** {art.get('department', 'Unknown')}")
-    st.markdown(f"**Gallery:** {art.get('source', 'Unknown')}")
+    # Display basic information
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"**Artist:** {art.get('artist', 'Unknown')}")
+        st.markdown(f"**Date:** {art.get('date', 'Unknown')}")
+        st.markdown(f"**Period:** {art.get('period', 'Unknown')}")
+    with col2:
+        st.markdown(f"**Origin:** {art.get('origin', 'Unknown')}")
+        st.markdown(f"**Medium:** {art.get('medium', 'Unknown')}")
+        st.markdown(f"**Gallery:** {art.get('source', 'Unknown')}")
+    
+    # Display search tags
+    if art.get('search_tags'):
+        st.markdown("**Tags:** " + ", ".join(art['search_tags']))
+    
+    # Display additional metadata if available
+    if art.get('year'):
+        st.markdown(f"**Year:** {art['year']}")
+    if art.get('source_category'):
+        st.markdown(f"**Museum Type:** {art['source_category']}")
 
 def handle_feedback(liked: bool):
     save_feedback(st.session_state.art, liked=liked)
@@ -91,6 +119,27 @@ if selected_sources != st.session_state.selected_sources:
     st.session_state.selected_sources = selected_sources
     st.session_state.art = fetch_filtered_artwork(st.session_state.seen_urls, selected_sources)
     st.rerun()
+
+# Test Sources Section
+st.sidebar.markdown("---")
+st.sidebar.markdown("**🧪 Test Sources**")
+st.sidebar.markdown("Test individual sources:")
+
+# Test individual sources
+for source_name in SOURCES.keys():
+    if st.sidebar.button(f"Test {source_name.title()}", key=f"test_{source_name}"):
+        with st.spinner(f"Testing {source_name}..."):
+            result = test_single_source(source_name)
+            if result:
+                if isinstance(result, list):
+                    st.success(f"{source_name.title()}: Found {len(result)} artworks")
+                    if result:
+                        st.json(result[0])  # Show first artwork as example
+                else:
+                    st.success(f"{source_name.title()}: Found 1 artwork")
+                    st.json(result)
+            else:
+                st.error(f"{source_name.title()}: No artworks found")
 
 # API Key Status
 st.sidebar.markdown("---")

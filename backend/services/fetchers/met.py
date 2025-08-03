@@ -7,22 +7,27 @@ BASE_URL = "https://collectionapi.metmuseum.org/public/collection/v1"
 def fetch_from_met(seen_urls: set[str] = set()):
     results = []
     try:
-        # Get a list of object IDs first
-        search_resp = fetch_with_retry(f"{BASE_URL}/search", params={"hasImages": True, "q": "*"})
-        if not search_resp or not search_resp.ok:
-            return results
-            
-        search_data = search_resp.json()
-        object_ids = search_data.get("objectIDs", [])
+        # MET API doesn't support search with GET, so we'll use random object IDs
+        # but with a smarter approach - use known ranges
+        object_ranges = [
+            (1, 100000),      # Early objects
+            (100000, 200000), # 19th century
+            (200000, 300000), # Modern
+            (300000, 400000), # Contemporary
+            (400000, 500000), # Various periods
+        ]
         
-        if not object_ids:
-            return results
-            
-        # Sample random object IDs
-        sample_size = min(10, len(object_ids))
-        sampled_ids = random.sample(object_ids, sample_size)
+        # Pick a random range
+        start_range, end_range = random.choice(object_ranges)
         
-        for object_id in sampled_ids:
+        # Try multiple random IDs from this range
+        attempts = 0
+        max_attempts = 20
+        
+        while len(results) < 5 and attempts < max_attempts:
+            object_id = random.randint(start_range, end_range)
+            attempts += 1
+            
             # Check cache first
             cache_key = f"met_object_{object_id}"
             cached_data = get_cached_data(cache_key)
@@ -43,8 +48,13 @@ def fetch_from_met(seen_urls: set[str] = set()):
             if not image_url or image_url in seen_urls or image_url.lower().endswith(".gif"):
                 continue
 
+            # Check if object has basic required info
+            title = data.get("title")
+            if not title:
+                continue
+
             results.append({
-                "title": data.get("title", "Unknown"),
+                "title": title,
                 "artist": data.get("artistDisplayName", "Unknown"),
                 "date": data.get("objectDate", "Unknown"),
                 "origin": data.get("culture") or data.get("country", "Unknown"),
@@ -52,12 +62,9 @@ def fetch_from_met(seen_urls: set[str] = set()):
                 "image_url": image_url,
                 "source": "Metropolitan Museum of Art"
             })
-            
-            # Limit results
-            if len(results) >= 5:
-                break
                 
     except Exception as e:
         print(f"[met] Error: {e}")
 
+    print(f"[met] Returning {len(results)} artworks")
     return results

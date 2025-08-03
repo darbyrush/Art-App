@@ -39,6 +39,11 @@ class Config:
         """Get Harvard API key from environment variable"""
         return os.getenv("HARVARD_API_KEY")
     
+    @property
+    def europeana_api_key(self) -> Optional[str]:
+        """Get Europeana API key from environment variable"""
+        return os.getenv("EUROPEANA_API_KEY")
+    
     def validate_api_keys(self) -> dict:
         """Validate that required API keys are available"""
         missing_keys = []
@@ -66,6 +71,11 @@ class Config:
             available_keys["cleveland"] = True
         else:
             available_keys["cleveland"] = False
+        
+        if self.europeana_api_key:
+            available_keys["europeana"] = True
+        else:
+            available_keys["europeana"] = False
         
         return {
             "missing_keys": missing_keys,

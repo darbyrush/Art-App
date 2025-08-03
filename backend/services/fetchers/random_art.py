@@ -1,5 +1,6 @@
 import random
 from typing import List, Set, Dict, Optional
+from backend.metadata import MetadataProcessor
 
 def fetch_random_artwork(seen_urls: set[str], sources=None, selected_sources=None):
     """
@@ -35,9 +36,18 @@ def fetch_random_artwork(seen_urls: set[str], sources=None, selected_sources=Non
         try:
             result = fetcher(seen_urls)
             if isinstance(result, list):
-                all_artworks.extend(result)
+                # Enrich metadata for each artwork
+                enriched_results = []
+                for artwork in result:
+                    enriched_artwork = MetadataProcessor.enrich_metadata(artwork)
+                    enriched_artwork['search_tags'] = MetadataProcessor.get_search_tags(enriched_artwork)
+                    enriched_results.append(enriched_artwork)
+                all_artworks.extend(enriched_results)
             elif isinstance(result, dict):
-                all_artworks.append(result)
+                # Enrich single artwork
+                enriched_artwork = MetadataProcessor.enrich_metadata(result)
+                enriched_artwork['search_tags'] = MetadataProcessor.get_search_tags(enriched_artwork)
+                all_artworks.append(enriched_artwork)
             
             # If we have enough artworks, stop fetching
             if len(all_artworks) >= 20:
@@ -85,11 +95,19 @@ def fetch_artworks_from_sources(seen_urls: set[str], selected_sources: List[str]
         try:
             result = fetcher(seen_urls)
             if isinstance(result, list):
-                # Limit artworks per source
+                # Limit artworks per source and enrich metadata
                 source_artworks = result[:max_per_source]
-                all_artworks.extend(source_artworks)
+                enriched_artworks = []
+                for artwork in source_artworks:
+                    enriched_artwork = MetadataProcessor.enrich_metadata(artwork)
+                    enriched_artwork['search_tags'] = MetadataProcessor.get_search_tags(enriched_artwork)
+                    enriched_artworks.append(enriched_artwork)
+                all_artworks.extend(enriched_artworks)
             elif isinstance(result, dict):
-                all_artworks.append(result)
+                # Enrich single artwork
+                enriched_artwork = MetadataProcessor.enrich_metadata(result)
+                enriched_artwork['search_tags'] = MetadataProcessor.get_search_tags(enriched_artwork)
+                all_artworks.append(enriched_artwork)
                 
         except Exception as e:
             print(f"Error in {source_name} fetcher: {e}")
