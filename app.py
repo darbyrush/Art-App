@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "back
 from backend.services.fetchers.random_art import fetch_random_artwork, fetch_artworks_from_sources
 from backend.registry import SOURCES  # ✅ Corrected import
 from backend.utils import load_seen_urls, save_feedback, clear_cache, get_performance_stats, reset_performance_stats
+from backend.config import config
 
 # ------------------- Streamlit Setup -------------------
 st.set_page_config(page_title="Gallery", layout="centered")
@@ -90,6 +91,19 @@ if selected_sources != st.session_state.selected_sources:
     st.session_state.selected_sources = selected_sources
     st.session_state.art = fetch_filtered_artwork(st.session_state.seen_urls, selected_sources)
     st.rerun()
+
+# API Key Status
+st.sidebar.markdown("---")
+st.sidebar.markdown("**🔑 API Key Status**")
+validation = config.validate_api_keys()
+for source, available in validation["available_keys"].items():
+    status = "✅" if available else "❌"
+    st.sidebar.markdown(f"{status} {source.title()}")
+
+if validation["missing_keys"]:
+    st.sidebar.markdown("**Missing API Keys:**")
+    for key in validation["missing_keys"]:
+        st.sidebar.markdown(f"• {key}")
 
 # Cache management
 col1, col2 = st.sidebar.columns(2)

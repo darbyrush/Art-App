@@ -1,21 +1,27 @@
 import requests
 from backend.utils import standardize_artwork, fetch_with_retry, get_cached_data, set_cached_data
+from backend.config import config
 import time
 import random
 
-API_KEY = "gITD4xyT2v8eBcFSyFaDP3WfbJj9kA52HxUTZsOD"
 SEARCH_URL = "https://api.si.edu/openaccess/api/v1.0/search"
 MAX_RETRIES = 3
 RESULTS_PER_PAGE = 10
 
 def fetch_from_smithsonian(seen_urls: set[str] = set()):
+    # Get API key from configuration
+    api_key = config.smithsonian_api_key
+    if not api_key:
+        print("[smithsonian] Warning: No API key found. Set SMITHSONIAN_API_KEY environment variable.")
+        return []
+    
     artworks = []
     retry_count = 0
     start_index = random.randint(0, 100)  # start from a random page to reduce repeats
 
     while retry_count < MAX_RETRIES and len(artworks) == 0:
         params = {
-            "api_key": API_KEY,
+            "api_key": api_key,
             "q": "online_media_type:Images",
             "rows": RESULTS_PER_PAGE,
             "start": start_index
