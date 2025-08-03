@@ -1,7 +1,7 @@
 import streamlit as st
 from frontend.utils import load_feedback_df, save_feedback, clear_feedback_csv
 
-st.title("🖼️ Your Liked Artworks")
+st.title("🖼️ Your Gallery")
 
 def reload_feedback_df():
     df = load_feedback_df()

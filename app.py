@@ -9,53 +9,33 @@ from io import BytesIO
 # Ensure backend modules are available
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "backend")))
 
-from backend.services.fetchers.random_art import fetch_random_artwork
+from backend.services.fetchers.random_art import fetch_random_artwork, fetch_artworks_from_sources
 from backend.registry import SOURCES  # ✅ Corrected import
-from backend.utils import load_seen_urls, save_feedback
+from backend.utils import load_seen_urls, save_feedback, clear_cache, get_performance_stats, reset_performance_stats
 
 # ------------------- Streamlit Setup -------------------
-st.set_page_config(page_title="Art Explorer", layout="centered")
-st.title("🎨 Do You Like This Painting?")
+st.set_page_config(page_title="Gallery", layout="centered")
+st.title("Gallery")
 
 # ------------------- State Initialization -------------------
 if "seen_urls" not in st.session_state:
     st.session_state.seen_urls = load_seen_urls()
 
-if "selected_source" not in st.session_state:
-    st.session_state.selected_source = "all"
+if "selected_sources" not in st.session_state:
+    st.session_state.selected_sources = ["all"]
 
 if "art" not in st.session_state:
     st.session_state.art = None
 
-def fetch_filtered_artwork(seen_urls, selected_source):
-    if selected_source == "all":
+def fetch_filtered_artwork(seen_urls, selected_sources):
+    if "all" in selected_sources:
         return fetch_random_artwork(seen_urls)
-
-    fetcher = SOURCES.get(selected_source)
-    if not fetcher:
-        return None
-
-    try:
-        result = fetcher(seen_urls)
-    except TypeError:
-        result = fetcher()
-
-    # If result is a dict, wrap it in a list
-    if isinstance(result, dict):
-        artworks = [result]
-    elif isinstance(result, list):
-        artworks = result
-    else:
-        return None  # Handle string, None, etc.
-
-    for art in artworks:
-        if not isinstance(art, dict):
-            continue
-        if art.get("image_url") and art["image_url"].lower().endswith(".gif"):
-            continue
-        if art.get("image_url") and art["image_url"] not in seen_urls:
-            return art
-
+    
+    # Fetch from multiple selected sources
+    artworks = fetch_artworks_from_sources(seen_urls, selected_sources)
+    if artworks:
+        import random
+        return random.choice(artworks)
     return None
 
 # ------------------- UI Helpers -------------------
@@ -66,7 +46,7 @@ def show_artwork(art):
         return
 
     try:
-        response = requests.get(image_url)
+        response = requests.get(image_url, timeout=10)
         img = Image.open(BytesIO(response.content))
         if img.format == "GIF":
             st.warning("Skipping GIF image.")
@@ -85,23 +65,59 @@ def show_artwork(art):
 def handle_feedback(liked: bool):
     save_feedback(st.session_state.art, liked=liked)
     st.session_state.seen_urls = load_seen_urls()
-    st.session_state.art = fetch_filtered_artwork(st.session_state.seen_urls, st.session_state.selected_source)
+    st.session_state.art = fetch_filtered_artwork(st.session_state.seen_urls, st.session_state.selected_sources)
     st.rerun()
 
 # ------------------- Main UI -------------------
 
-# Source filter dropdown
-sources = ["all"] + list(SOURCES.keys())  # ✅ Uses correct SOURCES reference
-selected = st.selectbox("Choose art source:", sources, index=sources.index(st.session_state.selected_source))
+# Source selection
+st.sidebar.header("Gallery Sources")
+st.sidebar.markdown("Select which art sources to browse:")
 
-if selected != st.session_state.selected_source:
-    st.session_state.selected_source = selected
-    st.session_state.art = fetch_filtered_artwork(st.session_state.seen_urls, selected)
+# Available sources
+available_sources = ["all"] + list(SOURCES.keys())
+
+# Multi-select for sources
+selected_sources = st.sidebar.multiselect(
+    "Choose art sources:",
+    options=available_sources,
+    default=st.session_state.selected_sources,
+    help="Select multiple sources to browse from. Choose 'all' to use all sources."
+)
+
+# Handle source selection changes
+if selected_sources != st.session_state.selected_sources:
+    st.session_state.selected_sources = selected_sources
+    st.session_state.art = fetch_filtered_artwork(st.session_state.seen_urls, selected_sources)
     st.rerun()
+
+# Cache management
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    if st.button("🗑️ Clear Cache"):
+        clear_cache()
+        st.sidebar.success("Cache cleared!")
+with col2:
+    if st.button("📊 Reset Stats"):
+        reset_performance_stats()
+        st.sidebar.success("Stats reset!")
+
+# Performance info
+st.sidebar.markdown("---")
+st.sidebar.markdown("**📈 Performance Stats**")
+stats = get_performance_stats()
+st.sidebar.markdown(f"Cache hit rate: {stats['cache_hit_rate']}")
+st.sidebar.markdown(f"Avg fetch time: {stats['avg_fetch_time']}")
+st.sidebar.markdown(f"Total requests: {stats['total_requests']}")
+st.sidebar.markdown(f"Cache size: {stats['cache_size']}")
+
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"**Seen artworks:** {len(st.session_state.seen_urls)}")
+st.sidebar.markdown(f"**Selected sources:** {len(selected_sources)}")
 
 # Load initial art if none
 if st.session_state.art is None:
-    st.session_state.art = fetch_filtered_artwork(st.session_state.seen_urls, st.session_state.selected_source)
+    st.session_state.art = fetch_filtered_artwork(st.session_state.seen_urls, st.session_state.selected_sources)
 
 art = st.session_state.art
 
@@ -123,3 +139,6 @@ if art:
             handle_feedback(False)
 else:
     st.warning("🎉 You've viewed all available artworks for now!")
+    if st.button("🔄 Refresh Sources"):
+        st.session_state.art = fetch_filtered_artwork(st.session_state.seen_urls, st.session_state.selected_sources)
+        st.rerun()

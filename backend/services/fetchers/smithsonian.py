@@ -1,12 +1,11 @@
 import requests
-from backend.utils import standardize_artwork
+from backend.utils import standardize_artwork, fetch_with_retry, get_cached_data, set_cached_data
 import time
 import random
 
 API_KEY = "gITD4xyT2v8eBcFSyFaDP3WfbJj9kA52HxUTZsOD"
 SEARCH_URL = "https://api.si.edu/openaccess/api/v1.0/search"
-DETAIL_URL = "https://api.si.edu/openaccess/api/v1.0/content/"
-MAX_RETRIES = 5
+MAX_RETRIES = 3
 RESULTS_PER_PAGE = 10
 
 def fetch_from_smithsonian(seen_urls: set[str] = set()):
@@ -22,56 +21,90 @@ def fetch_from_smithsonian(seen_urls: set[str] = set()):
             "start": start_index
         }
 
-        response = requests.get(SEARCH_URL, params=params)
-        if not response.ok:
-            print(f"[smithsonian] Search failed with status {response.status_code}")
-            return artworks
+        # Check cache first
+        cache_key = f"smithsonian_start_{start_index}"
+        cached_data = get_cached_data(cache_key)
+        
+        if cached_data:
+            print(f"[smithsonian] Using cached data for start={start_index}")
+            data = cached_data
+        else:
+            # Fetch fresh data
+            response = fetch_with_retry(SEARCH_URL, params=params)
+            if not response or not response.ok:
+                print(f"[smithsonian] Search failed with status {response.status_code if response else 'No response'}")
+                retry_count += 1
+                start_index += RESULTS_PER_PAGE
+                continue
 
-        data = response.json()
+            data = response.json()
+            set_cached_data(cache_key, data)
+
         rows = data.get("response", {}).get("rows", [])
-
         print(f"[smithsonian] Search returned {len(rows)} results at start={start_index}")
 
         for item in rows:
-            obj_id = item.get("id")
-            if not obj_id:
+            # The search results already contain the content we need
+            content = item.get("content", {})
+            if not content:
                 continue
 
-            print(f"[smithsonian] Processing id: {obj_id}")
-            detail_res = requests.get(f"{DETAIL_URL}{obj_id}", params={"api_key": API_KEY})
-            if not detail_res.ok:
+            # Extract descriptive information
+            descriptive = content.get("descriptiveNonRepeating", {})
+            if not descriptive:
                 continue
 
-            try:
-                detail = detail_res.json()
-                content = detail["content"]["descriptiveNonRepeating"]
-                media_list = content.get("online_media", {}).get("media", [])
-
-                if not media_list:
-                    print(f"[smithsonian] No media for id {obj_id}")
-                    continue
-
-                image_url = media_list[0].get("content")
-                if not image_url or image_url.lower().endswith(".gif") or image_url in seen_urls:
-                    print(f"[smithsonian] Skipped image {image_url}")
-                    continue
-
-                title = content.get("title", "Untitled")
-                artist = content.get("record_link", "").split("/")[-1] or "Unknown"
-
-                artworks.append(standardize_artwork({
-                    "title": title,
-                    "artist": artist,
-                    "image_url": image_url,
-                    "source": "Smithsonian"
-                }))
-            except Exception as e:
-                print(f"[smithsonian] Error processing {obj_id}: {e}")
+            # Get media information
+            online_media = descriptive.get("online_media", {})
+            media_list = online_media.get("media", [])
+            
+            if not media_list:
                 continue
+
+            # Get the first media item
+            media = media_list[0]
+            image_url = media.get("content")
+            
+            if not image_url or image_url.lower().endswith(".gif") or image_url in seen_urls:
+                continue
+
+            # Extract title and artist
+            title = descriptive.get("title", {}).get("content", "Untitled")
+            if not title or title == "Untitled":
+                # Try to get title from freetext
+                freetext = content.get("freetext", {})
+                publisher = freetext.get("publisher", [])
+                if publisher:
+                    title = publisher[0].get("content", "Untitled")
+
+            # Extract artist from various possible locations
+            artist = "Unknown"
+            freetext = content.get("freetext", {})
+            name_list = freetext.get("name", [])
+            for name_item in name_list:
+                if name_item.get("label") in ["Artist", "Creator", "Maker"]:
+                    artist = name_item.get("content", "Unknown")
+                    break
+
+            # If no artist found, try to extract from record_link
+            if artist == "Unknown":
+                record_link = descriptive.get("record_link", "")
+                if record_link:
+                    # Try to extract artist from the URL path
+                    parts = record_link.split("/")
+                    if len(parts) > 1:
+                        artist = parts[-1].replace("_", " ").title()
+
+            artworks.append(standardize_artwork(
+                title=title,
+                artist=artist,
+                image_url=image_url,
+                source="Smithsonian"
+            ))
 
         retry_count += 1
         start_index += RESULTS_PER_PAGE  # go to next batch if needed
-        time.sleep(0.3)  # be kind to the API
+        time.sleep(0.1)  # Reduced sleep time for better performance
 
     print(f"[smithsonian] Returning {len(artworks)} artworks")
     return artworks
