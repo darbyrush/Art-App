@@ -4,7 +4,7 @@ const config = {
     apiUrl: 'http://localhost:8000'
   },
   production: {
-    apiUrl: process.env.VITE_API_URL || 'https://your-backend-url.railway.app'
+    apiUrl: import.meta.env.VITE_API_URL || 'https://your-backend-url.railway.app'
   }
 }
 
