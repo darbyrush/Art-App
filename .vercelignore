@@ -1,0 +1,21 @@
+# Backend files
+api/
+backend/
+database/
+scripts/
+tests/
+test_scripts/
+venv/
+*.py
+requirements.txt
+Dockerfile
+.env
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development files
+.git/
+.gitignore 
