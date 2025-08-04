@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-from frontend.utils import load_feedback_df, save_feedback, clear_feedback_csv
+from frontend.utils import get_user_liked_artworks, update_user_artwork_rating, clear_user_feedback, get_user_stats
+from frontend.auth import is_logged_in, get_current_user, logout_user, render_login_page
 import plotly.express as px
 import plotly.graph_objects as go
 from collections import Counter
@@ -12,6 +13,15 @@ st.set_page_config(
     page_icon="🖼️",
     layout="wide"
 )
+
+# Check if user is logged in
+if not is_logged_in():
+    render_login_page()
+    st.stop()
+
+# Get current user
+current_user = get_current_user()
+username = st.session_state.get('username', 'User')
 
 # Custom CSS for cool coordinated cards
 st.markdown("""
@@ -95,24 +105,31 @@ st.markdown("""
         margin: 1rem 0;
         border: 1px solid #eee;
     }
+    
+    .user-info {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 1rem 0;
+        color: white;
+        text-align: center;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Main header
 st.markdown('<h1 class="gallery-header">🖼️ Your Art Gallery</h1>', unsafe_allow_html=True)
 
-# Load data
-@st.cache_data
-def load_gallery_data():
-    df = load_feedback_df()
-    if not df.empty and "liked" in df.columns:
-        df["liked"] = df["liked"].astype(str).str.lower().map({
-            "true": True, "false": False, "like": True, "dislike": False
-        }).fillna(False)
-        return df[df["liked"]].copy()
-    return pd.DataFrame()
+# User info section
+st.markdown(f"""
+<div class="user-info">
+    <h3>{username}'s Personal Art Collection</h3>
+    <p>Manage, rate, and organize your favorite artworks.</p>
+</div>
+""", unsafe_allow_html=True)
 
-liked_df = load_gallery_data()
+# Load user-specific data
+liked_df = get_user_liked_artworks(current_user)
 
 if liked_df.empty:
     st.info("🎨 No liked artworks yet. Start exploring art from the main page!")
@@ -127,31 +144,20 @@ else:
     st.markdown('<div class="stats-card">', unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns(4)
     
+    user_stats = get_user_stats(current_user)
+    
     with col1:
-        st.metric("Total Artworks", len(liked_df))
+        st.metric("Total Artworks", user_stats['liked_artworks'])
     
     with col2:
-        unique_sources = liked_df['source'].nunique()
-        st.metric("Museums", unique_sources)
+        st.metric("Museums", user_stats['unique_museums'])
     
     with col3:
-        if 'rating' in liked_df.columns:
-            # Handle non-numeric values in rating column
-            rating_series = pd.to_numeric(liked_df['rating'], errors='coerce')
-            avg_rating = rating_series.mean()
-            if pd.isna(avg_rating):
-                avg_rating = 0
-        else:
-            avg_rating = 0
+        avg_rating = user_stats['avg_rating']
         st.metric("Avg Rating", f"{avg_rating:.1f}⭐")
     
     with col4:
-        if 'notes' in liked_df.columns:
-            # Convert to string and handle NaN values
-            notes_series = liked_df['notes'].astype(str).replace('nan', '')
-            total_notes = notes_series.str.len().sum()
-        else:
-            total_notes = 0
+        total_notes = liked_df['notes'].astype(str).replace('nan', '').str.len().sum() if 'notes' in liked_df.columns else 0
         st.metric("Total Notes", f"{total_notes} chars")
     
     st.markdown('</div>', unsafe_allow_html=True)
@@ -240,8 +246,8 @@ else:
                         <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; opacity: 0.9;">{artwork.get('artist', 'Unknown Artist')}</p>
                     </div>
                     <div class="card-body" style="background: {color_scheme['body']};">
-                                                        <img src="{artwork.get('image_url', '')}" alt="{artwork.get('title', 'Artwork')}" 
-                                     style="width: 100%; height: 200px; object-fit: cover; border-radius: 8px;" onerror="this.style.display='none';"/>
+                        <img src="{artwork.get('image_url', '')}" alt="{artwork.get('title', 'Artwork')}" 
+                             style="width: 100%; height: 200px; object-fit: cover; border-radius: 8px;" onerror="this.style.display='none';"/>
                     </div>
                     <div class="card-footer">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -249,7 +255,7 @@ else:
                                 {source}
                             </span>
                             <span class="rating-stars">
-                                {'⭐' * int(pd.to_numeric(artwork.get('rating', 0), errors='coerce') or 0)}
+                                {'⭐' * int(artwork.get('rating', 0))}
                             </span>
                         </div>
                         <p style="margin: 0.5rem 0 0 0; font-size: 0.8rem; color: #666;">
@@ -270,26 +276,23 @@ else:
                     new_notes = st.text_area("Your notes", value=current_notes, key=f"notes_{idx}")
                     
                     # Rating section
-                    current_rating = int(pd.to_numeric(artwork.get('rating', 0), errors='coerce') or 0)
+                    current_rating = int(artwork.get('rating', 0))
                     new_rating = st.slider("Rating", 1, 5, current_rating, key=f"rating_{idx}")
                     
                     # Save button
                     if st.button("💾 Save Changes", key=f"save_{idx}"):
                         # Update the artwork data
-                        artwork_data = {
-                            'title': artwork.get('title', ''),
-                            'image_url': artwork.get('image_url', ''),
-                            'artist': artwork.get('artist', ''),
-                            'date': artwork.get('date', ''),
-                            'origin': artwork.get('origin', ''),
-                            'department': artwork.get('department', ''),
-                            'source': artwork.get('source', ''),
-                            'notes': new_notes,
-                            'rating': new_rating,
-                        }
-                        save_feedback(artwork_data, "like", overwrite=True)
-                        st.success("Changes saved!")
-                        st.rerun()
+                        success = update_user_artwork_rating(
+                            current_user, 
+                            artwork.get('title', ''), 
+                            new_rating, 
+                            new_notes
+                        )
+                        if success:
+                            st.success("Changes saved!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to save changes")
     
     # Analytics section
     st.markdown("---")
@@ -330,7 +333,7 @@ else:
         st.download_button(
             "📄 Download CSV", 
             csv_data, 
-            file_name="my_art_gallery.csv", 
+            file_name=f"{username}_art_gallery.csv", 
             mime="text/csv"
         )
     
@@ -339,7 +342,7 @@ else:
         st.download_button(
             "📄 Download JSON", 
             json_data, 
-            file_name="my_art_gallery.json", 
+            file_name=f"{username}_art_gallery.json", 
             mime="application/json"
         )
     
@@ -350,7 +353,7 @@ else:
     confirm_clear = st.checkbox("I understand this will clear all my liked artworks and notes.")
     if confirm_clear:
         if st.button("⚠️ Clear All Gallery Items", type="secondary"):
-            clear_feedback_csv()
+            clear_user_feedback(current_user)
             st.success("Gallery cleared successfully!")
             st.rerun()
 

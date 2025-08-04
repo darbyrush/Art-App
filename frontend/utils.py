@@ -1,6 +1,8 @@
 import csv
 import os
 import pandas as pd
+import json
+from datetime import datetime
 
 FEEDBACK_CSV = "feedback.csv"
 FIELDNAMES = [
@@ -16,58 +18,113 @@ def load_seen_urls():
     return set(df["image_url"].dropna().unique())
 
 def load_feedback_df():
-    """Load full feedback as DataFrame with all columns including notes and rating."""
-    if not os.path.exists(FEEDBACK_CSV):
-        return pd.DataFrame(columns=FIELDNAMES)
+    """Load feedback data from CSV file"""
+    if os.path.exists('feedback.csv'):
+        try:
+            df = pd.read_csv('feedback.csv')
+            return df
+        except Exception as e:
+            print(f"Error loading feedback.csv: {e}")
+            return pd.DataFrame()
+    return pd.DataFrame()
+
+def save_feedback(artwork_data, rating, notes="", user_id=None):
+    """Save feedback to CSV with user ID"""
+    df = load_feedback_df()
     
-    df = pd.read_csv(FEEDBACK_CSV)
-
-    # Ensure all required columns are present
-    for col in FIELDNAMES:
-        if col not in df.columns:
-            default = "" if col not in ["rating"] else 0
-            df[col] = default
-
-    # Correct types
-    df["rating"] = pd.to_numeric(df["rating"], errors="coerce").fillna(0).astype(int)
-
-    return df[FIELDNAMES]
-
-def save_feedback(art, liked, overwrite=False):
-    """
-    Save feedback about an artwork.
-    If overwrite=True, update existing record by image_url; else append.
-    """
-    new_row = {
-        "title": art.get("title", ""),
-        "image_url": art.get("image_url", ""),
-        "liked": liked,
-        "artist": art.get("artist", ""),
-        "date": art.get("date", ""),
-        "origin": art.get("origin", ""),
-        "department": art.get("department", ""),
-        "source": art.get("source", ""),
-        "notes": art.get("notes", ""),
-        "rating": int(art.get("rating", 0))
+    # Add user_id column if it doesn't exist
+    if 'user_id' not in df.columns:
+        df['user_id'] = None
+    
+    # Create new feedback entry
+    new_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'user_id': user_id,
+        'title': artwork_data.get('title', ''),
+        'image_url': artwork_data.get('image_url', ''),
+        'artist': artwork_data.get('artist', ''),
+        'date': artwork_data.get('date', ''),
+        'origin': artwork_data.get('origin', ''),
+        'department': artwork_data.get('department', ''),
+        'source': artwork_data.get('source', ''),
+        'rating': rating,
+        'notes': notes,
+        'liked': rating == 'like'
     }
+    
+    # Add to dataframe
+    df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+    
+    # Save to CSV
+    df.to_csv('feedback.csv', index=False)
+    return True
 
-    # Overwrite logic
-    if overwrite and os.path.exists(FEEDBACK_CSV):
-        df = pd.read_csv(FEEDBACK_CSV)
-        if "image_url" in df.columns:
-            idx = df.index[df["image_url"] == new_row["image_url"]]
-            if len(idx) > 0:
-                df.loc[idx[0]] = new_row
-                df.to_csv(FEEDBACK_CSV, index=False)
-                return
+def get_user_feedback(user_id):
+    """Get feedback data for a specific user"""
+    df = load_feedback_df()
+    if 'user_id' in df.columns:
+        return df[df['user_id'] == user_id].copy()
+    return pd.DataFrame()
 
-    # Append logic
-    file_exists = os.path.exists(FEEDBACK_CSV)
-    with open(FEEDBACK_CSV, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(new_row)
+def get_user_liked_artworks(user_id):
+    """Get liked artworks for a specific user"""
+    df = get_user_feedback(user_id)
+    if not df.empty and "liked" in df.columns:
+        df["liked"] = df["liked"].astype(str).str.lower().map({
+            "true": True, "false": False, "like": True, "dislike": False
+        }).fillna(False)
+        return df[df["liked"]].copy()
+    return pd.DataFrame()
+
+def update_user_artwork_rating(user_id, artwork_title, new_rating, new_notes=""):
+    """Update rating and notes for a specific user's artwork"""
+    df = load_feedback_df()
+    if 'user_id' in df.columns:
+        # Find the specific artwork for this user
+        mask = (df['user_id'] == user_id) & (df['title'] == artwork_title)
+        if mask.any():
+            df.loc[mask, 'rating'] = new_rating
+            df.loc[mask, 'notes'] = new_notes
+            df.loc[mask, 'liked'] = (new_rating == 'like')
+            df.to_csv('feedback.csv', index=False)
+            return True
+    return False
+
+def clear_user_feedback(user_id):
+    """Clear all feedback for a specific user"""
+    df = load_feedback_df()
+    if 'user_id' in df.columns:
+        df = df[df['user_id'] != user_id]
+        df.to_csv('feedback.csv', index=False)
+        return True
+    return False
+
+def clear_feedback_csv():
+    """Clear all feedback data"""
+    if os.path.exists('feedback.csv'):
+        os.remove('feedback.csv')
+        return True
+    return False
+
+def get_user_stats(user_id):
+    """Get statistics for a specific user"""
+    df = get_user_feedback(user_id)
+    if df.empty:
+        return {
+            'total_artworks': 0,
+            'liked_artworks': 0,
+            'unique_museums': 0,
+            'avg_rating': 0
+        }
+    
+    liked_df = df[df['liked'] == True] if 'liked' in df.columns else df
+    
+    return {
+        'total_artworks': len(df),
+        'liked_artworks': len(liked_df),
+        'unique_museums': liked_df['source'].nunique() if not liked_df.empty else 0,
+        'avg_rating': liked_df['rating'].mean() if 'rating' in liked_df.columns and not liked_df.empty else 0
+    }
 
 def remove_last_feedback():
     """Remove the last feedback row from CSV and return it as a dict."""
@@ -80,8 +137,3 @@ def remove_last_feedback():
     df = df.iloc[:-1]
     df.to_csv(FEEDBACK_CSV, index=False)
     return last_row
-
-def clear_feedback_csv():
-    """Delete the feedback CSV entirely."""
-    if os.path.exists(FEEDBACK_CSV):
-        os.remove(FEEDBACK_CSV)

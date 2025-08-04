@@ -1,6 +1,9 @@
 # Environment variables
 .env
 
+# User data
+users.json
+
 # Python
 __pycache__/
 *.pyc
