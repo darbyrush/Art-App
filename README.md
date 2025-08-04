@@ -1,19 +1,22 @@
 # Art Explorer App
 
-A Streamlit application that allows users to browse and rate artworks from various museum APIs.
+A modern Vue.js application that allows users to browse and rate artworks from various museum APIs with an Instagram-style interface.
 
 ## Features
 
-- Browse artworks from multiple museum sources
-- Like/dislike artworks and save them to your gallery
-- Add notes and ratings to liked artworks
-- Export your collection as CSV or JSON
-- Multi-source selection
-- Performance monitoring and caching
+- 🎨 **Instagram-style artwork browsing** with double-tap to like
+- 🔐 **User authentication** with login/register
+- 🖼️ **Personal gallery** of liked artworks
+- 📊 **User statistics** and profile management
+- 🎯 **Museum source filtering** for diverse art discovery
+- ⭐ **Artwork rating system** (1-5 stars)
+- 📱 **Responsive design** for all devices
+- 🎭 **Modern UI/UX** with smooth animations
+- 🚀 **Fast performance** with Vite and optimized builds
 
 ## Setup
 
-### 1. Install Dependencies
+### 1. Install Backend Dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -46,13 +49,48 @@ HARVARD_API_KEY=your_harvard_api_key_here
 CLEVELAND_API_KEY=your_cleveland_api_key_here
 ```
 
-### 3. Run the Application
+### 3. Install Frontend Dependencies
 
 ```bash
-streamlit run app.py
+cd frontend
+npm install
 ```
 
-The app will be available at `http://localhost:8501`
+### 4. Run the Application
+
+**Start the Backend API:**
+```bash
+# From the root directory
+uvicorn api.main:app --reload --port 8000
+```
+
+**Start the Frontend:**
+```bash
+# From the frontend directory
+cd frontend
+npm run dev
+```
+
+The application will be available at:
+- **Frontend**: `http://localhost:3000`
+- **Backend API**: `http://localhost:8000`
+
+## Tech Stack
+
+### Frontend
+- **Vue 3** - Progressive JavaScript framework
+- **Tailwind CSS** - Utility-first CSS framework
+- **Pinia** - State management for Vue
+- **Vue Router** - Client-side routing
+- **Axios** - HTTP client for API communication
+- **Vite** - Fast build tool and dev server
+
+### Backend
+- **FastAPI** - Modern Python web framework
+- **SQLAlchemy** - Database ORM
+- **Pydantic** - Data validation
+- **JWT** - Authentication
+- **Uvicorn** - ASGI server
 
 ## API Key Sources
 
@@ -115,6 +153,17 @@ Use the "Clear Cache" button in the sidebar to reset the cache if you encounter 
 
 ## Development
 
+### Frontend Development
+1. Navigate to the frontend directory: `cd frontend`
+2. Install dependencies: `npm install`
+3. Start development server: `npm run dev`
+4. Build for production: `npm run build`
+
+### Backend Development
+1. Install Python dependencies: `pip install -r requirements.txt`
+2. Start the API server: `uvicorn api.main:app --reload --port 8000`
+3. Access API documentation: `http://localhost:8000/docs`
+
 ### Adding New Sources
 1. Create a new fetcher in `backend/services/fetchers/`
 2. Add the API key configuration in `backend/config.py`
@@ -123,4 +172,5 @@ Use the "Clear Cache" button in the sidebar to reset the cache if you encounter 
 ### Performance Optimization
 - The app uses caching to reduce API calls
 - Requests are made with timeouts and retry logic
-- Performance statistics are tracked in real-time 
+- Performance statistics are tracked in real-time
+- Frontend uses Vite for fast development and optimized builds 
