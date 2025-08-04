@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "description": "Art Explorer App - Frontend and Backend",
   "scripts": {
-    "build": "cd frontend && npm install && npm run build",
-    "dev": "cd frontend && npm run dev"
+    "build": "cd frontend && npm run build",
+    "dev": "cd frontend && npm run dev",
+    "install:frontend": "cd frontend && npm install"
   },
   "workspaces": [
     "frontend"
