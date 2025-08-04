@@ -3,7 +3,6 @@ import pandas as pd
 from frontend.utils import get_user_liked_artworks, update_user_artwork_rating, clear_user_feedback, get_user_stats
 from frontend.auth import is_logged_in, get_current_user, logout_user, render_login_page
 import plotly.express as px
-import plotly.graph_objects as go
 from collections import Counter
 import re
 
@@ -23,7 +22,7 @@ if not is_logged_in():
 current_user = get_current_user()
 username = st.session_state.get('username', 'User')
 
-# Custom CSS for cool coordinated cards
+# Custom CSS for clean gallery design
 st.markdown("""
 <style>
     .gallery-header {
@@ -36,13 +35,13 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     
-    .filter-card {
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        border-radius: 15px;
-        padding: 1.5rem;
+    .user-info {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        border-radius: 10px;
+        padding: 1rem;
         margin: 1rem 0;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
         color: white;
+        text-align: center;
     }
     
     .stats-card {
@@ -54,6 +53,14 @@ st.markdown("""
         text-align: center;
     }
     
+    .filter-card {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        color: white;
+    }
+    
     .artwork-card {
         border-radius: 15px;
         padding: 0;
@@ -61,6 +68,7 @@ st.markdown("""
         box-shadow: 0 8px 32px rgba(0,0,0,0.15);
         overflow: hidden;
         transition: transform 0.3s ease;
+        background: white;
     }
     
     .artwork-card:hover {
@@ -98,21 +106,25 @@ st.markdown("""
         font-size: 1.2rem;
     }
     
-    .filter-section {
-        background: rgba(255,255,255,0.9);
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 1rem 0;
-        border: 1px solid #eee;
+    .empty-gallery {
+        text-align: center;
+        padding: 4rem 2rem;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        border-radius: 20px;
+        margin: 2rem auto;
+        max-width: 600px;
     }
     
-    .user-info {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 1rem 0;
-        color: white;
-        text-align: center;
+    .empty-gallery h3 {
+        color: #667eea;
+        font-size: 1.8rem;
+        margin-bottom: 1rem;
+    }
+    
+    .empty-gallery p {
+        color: #7f8c8d;
+        font-size: 1.1rem;
+        margin-bottom: 2rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -124,7 +136,7 @@ st.markdown('<h1 class="gallery-header">🖼️ Your Art Gallery</h1>', unsafe_a
 st.markdown(f"""
 <div class="user-info">
     <h3>{username}'s Personal Art Collection</h3>
-    <p>Manage, rate, and organize your favorite artworks.</p>
+    <p>Manage your liked artworks, ratings, and notes.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -132,11 +144,11 @@ st.markdown(f"""
 liked_df = get_user_liked_artworks(current_user)
 
 if liked_df.empty:
-    st.info("🎨 No liked artworks yet. Start exploring art from the main page!")
     st.markdown("""
-    <div style="text-align: center; padding: 2rem;">
-        <h3>Your gallery is empty</h3>
+    <div class="empty-gallery">
+        <h3>🎨 Your gallery is empty</h3>
         <p>Go back to the main page and start liking some artworks!</p>
+        <p>Your liked artworks will appear here with your ratings and notes.</p>
     </div>
     """, unsafe_allow_html=True)
 else:
@@ -265,8 +277,8 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Add expandable details
-                with st.expander(f"📋 Details & Notes - {artwork.get('title', 'Untitled')[:20]}"):
+                # Add expandable details for editing
+                with st.expander(f"📝 Edit - {artwork.get('title', 'Untitled')[:20]}"):
                     st.write(f"**Date:** {artwork.get('date', 'Unknown')}")
                     st.write(f"**Origin:** {artwork.get('origin', 'Unknown')}")
                     st.write(f"**Department:** {artwork.get('department', 'Unknown')}")
@@ -361,6 +373,6 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #7f8c8d; font-size: 0.9rem;">
-    🎨 Your Personal Art Gallery | Filter, Organize, and Enjoy Your Collection
+    🎨 Your Personal Art Gallery | Manage, Rate, and Organize Your Collection
 </div>
 """, unsafe_allow_html=True) 

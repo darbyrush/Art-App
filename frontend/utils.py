@@ -119,11 +119,26 @@ def get_user_stats(user_id):
     
     liked_df = df[df['liked'] == True] if 'liked' in df.columns else df
     
+    # Handle rating calculation safely
+    avg_rating = 0
+    if 'rating' in liked_df.columns and not liked_df.empty:
+        # Convert rating to numeric, handling string values
+        try:
+            # First try to convert to numeric
+            numeric_ratings = pd.to_numeric(liked_df['rating'], errors='coerce')
+            # Calculate mean of valid numeric ratings
+            valid_ratings = numeric_ratings.dropna()
+            if not valid_ratings.empty:
+                avg_rating = valid_ratings.mean()
+        except:
+            # If conversion fails, default to 0
+            avg_rating = 0
+    
     return {
         'total_artworks': len(df),
         'liked_artworks': len(liked_df),
         'unique_museums': liked_df['source'].nunique() if not liked_df.empty else 0,
-        'avg_rating': liked_df['rating'].mean() if 'rating' in liked_df.columns and not liked_df.empty else 0
+        'avg_rating': avg_rating
     }
 
 def remove_last_feedback():
