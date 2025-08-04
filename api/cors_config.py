@@ -22,8 +22,8 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
         
         return response
 
-def get_cors_middleware():
-    """Get CORS middleware configuration"""
+def get_cors_origins():
+    """Get CORS origins configuration"""
     cors_origins = [
         "http://localhost:3000", 
         "http://127.0.0.1:3000",
@@ -40,9 +40,4 @@ def get_cors_middleware():
     if os.getenv("CORS_ORIGINS"):
         cors_origins.extend(os.getenv("CORS_ORIGINS").split(","))
     
-    return CORSMiddleware(
-        allow_origins=cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    ) 
+    return cors_origins 

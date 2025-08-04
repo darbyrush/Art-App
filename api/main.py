@@ -38,10 +38,16 @@ except Exception as e:
 app = FastAPI(title="Art Explorer API", version="1.0.0")
 
 # Import CORS configuration
-from api.cors_config import get_cors_middleware, DynamicCORSMiddleware
+from api.cors_config import get_cors_origins, DynamicCORSMiddleware
 
 # Add CORS middleware
-app.add_middleware(get_cors_middleware())
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_cors_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.add_middleware(DynamicCORSMiddleware)
 
 # OAuth2 scheme
