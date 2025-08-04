@@ -103,6 +103,46 @@ export const apiClient = {
     return response.data
   },
 
+  async getArtworks(params = {}) {
+    const { page = 1, sources = ['all'], sortBy = 'random' } = params
+    const sourcesParam = sources.join(',')
+    const response = await api.get('/artworks', {
+      params: {
+        page,
+        sources: sourcesParam,
+        sort_by: sortBy
+      }
+    })
+    return response.data
+  },
+
+  async getGalleryArtworks(params = {}) {
+    const { page = 1, sources = ['all'], sortBy = 'random' } = params
+    const sourcesParam = sources.join(',')
+    const response = await api.get('/artworks/gallery', {
+      params: {
+        page,
+        sources: sourcesParam,
+        sort_by: sortBy
+      }
+    })
+    return response.data
+  },
+
+  async getRecommendations(limit = 10) {
+    const response = await api.get('/artworks/recommendations', {
+      params: { limit }
+    })
+    return response.data
+  },
+
+  async getPopularArtworks(limit = 10) {
+    const response = await api.get('/artworks/popular', {
+      params: { limit }
+    })
+    return response.data
+  },
+
   // Health check
   async healthCheck() {
     const response = await api.get('/health')

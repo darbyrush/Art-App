@@ -4,6 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List, Optional
+import base64
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
 
 from database.config import get_db, init_db
 from database.models import User, Artwork, UserLike, UserRating, UserNote, APICache
@@ -36,6 +39,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000", 
         "http://127.0.0.1:3000",
+        "http://localhost:3001", 
+        "http://127.0.0.1:3001",
         "http://localhost:8501", 
         "http://127.0.0.1:8501"
     ],
@@ -178,10 +183,103 @@ def get_popular_artworks(
     """Get most popular artworks"""
     return artwork_service.get_popular_artworks(db, limit)
 
+@app.get("/artworks", response_model=List[ArtworkResponse])
+def get_artworks(
+    page: int = 1,
+    sources: Optional[str] = None,
+    sort_by: str = "random",
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get paginated artworks with filters"""
+    try:
+        source_list = sources.split(",") if sources else ["all"]
+        offset = (page - 1) * limit
+        
+        artworks = artwork_service.get_artworks(
+            db, 
+            source_list, 
+            offset, 
+            limit, 
+            sort_by
+        )
+        return artworks
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching artworks: {str(e)}"
+        )
+
+@app.get("/artworks/gallery", response_model=List[ArtworkResponse])
+def get_gallery_artworks(
+    page: int = 1,
+    sources: Optional[str] = None,
+    sort_by: str = "random",
+    limit: int = 12,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get paginated artworks for gallery view with endless scrolling"""
+    try:
+        source_list = sources.split(",") if sources else ["all"]
+        offset = (page - 1) * limit
+        
+        artworks = artwork_service.get_artworks(
+            db, 
+            source_list, 
+            offset, 
+            limit, 
+            sort_by
+        )
+        return artworks
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching gallery artworks: {str(e)}"
+        )
+
 @app.get("/health")
 def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.utcnow()}
+
+@app.get("/placeholder/{source}.jpg")
+def get_placeholder_image(source: str):
+    """Generate a placeholder image for missing artwork images"""
+    try:
+        # Create a simple placeholder image
+        width, height = 400, 400
+        img = Image.new('RGB', (width, height), color='#f3f4f6')
+        draw = ImageDraw.Draw(img)
+        
+        # Try to use a default font, fallback to basic if not available
+        try:
+            font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 24)
+        except:
+            font = ImageFont.load_default()
+        
+        # Add text
+        text = f"Artwork\n{source.title()}"
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        
+        x = (width - text_width) // 2
+        y = (height - text_height) // 2
+        
+        draw.text((x, y), text, fill='#6b7280', font=font)
+        
+        # Convert to bytes
+        img_byte_arr = BytesIO()
+        img.save(img_byte_arr, format='JPEG')
+        img_byte_arr.seek(0)
+        
+        from fastapi.responses import Response
+        return Response(content=img_byte_arr.getvalue(), media_type="image/jpeg")
+    except Exception as e:
+        # Return a simple error response if image generation fails
+        return {"error": "Could not generate placeholder image"}
 
 @app.post("/admin/populate-database")
 def populate_database_endpoint(

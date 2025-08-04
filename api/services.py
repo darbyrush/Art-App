@@ -271,6 +271,31 @@ class ArtworkService:
         artworks = query.all()
         return [ArtworkResponse.model_validate(artwork) for artwork in artworks]
     
+    def get_artworks(self, db: Session, sources: List[str], offset: int = 0, 
+                    limit: int = 20, sort_by: str = "random") -> List[ArtworkResponse]:
+        """Get paginated artworks with sorting and filtering"""
+        query = db.query(Artwork)
+        
+        # Filter by sources
+        if "all" not in sources:
+            query = query.filter(Artwork.source.in_(sources))
+        
+        # Apply sorting
+        if sort_by == "recent":
+            query = query.order_by(Artwork.created_at.desc())
+        elif sort_by == "popular":
+            # Join with likes to sort by popularity
+            query = query.join(UserLike).filter(UserLike.liked == True)
+            query = query.group_by(Artwork.id).order_by(func.count(UserLike.id).desc())
+        elif sort_by == "artist":
+            query = query.order_by(Artwork.artist.asc())
+        else:  # random
+            query = query.order_by(func.random())
+        
+        # Apply pagination
+        artworks = query.offset(offset).limit(limit).all()
+        return [ArtworkResponse.model_validate(artwork) for artwork in artworks]
+    
     def cache_api_response(self, db: Session, cache_key: str, data: dict, 
                           expires_in_minutes: int = 60) -> None:
         """Cache API response in database"""

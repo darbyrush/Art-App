@@ -98,6 +98,48 @@ export const useArtworkStore = defineStore('artwork', () => {
     }
   }
 
+  const getArtworks = async (params = {}) => {
+    try {
+      const { page = 1, sources = ['all'], sortBy = 'random' } = params
+      const artworks = await apiClient.getArtworks({ page, sources, sortBy })
+      return artworks
+    } catch (error) {
+      console.error('Error fetching artworks:', error)
+      throw error
+    }
+  }
+
+  const getGalleryArtworks = async (params = {}) => {
+    try {
+      const { page = 1, sources = ['all'], sortBy = 'random' } = params
+      const artworks = await apiClient.getGalleryArtworks({ page, sources, sortBy })
+      return artworks
+    } catch (error) {
+      console.error('Error fetching gallery artworks:', error)
+      throw error
+    }
+  }
+
+  const getRecommendations = async (limit = 10) => {
+    try {
+      const artworks = await apiClient.getRecommendations(limit)
+      return artworks
+    } catch (error) {
+      console.error('Error fetching recommendations:', error)
+      throw error
+    }
+  }
+
+  const getPopularArtworks = async (limit = 10) => {
+    try {
+      const artworks = await apiClient.getPopularArtworks(limit)
+      return artworks
+    } catch (error) {
+      console.error('Error fetching popular artworks:', error)
+      throw error
+    }
+  }
+
   return {
     currentArtwork,
     artworkHistory,
@@ -110,6 +152,10 @@ export const useArtworkStore = defineStore('artwork', () => {
     rateArtwork,
     addNote,
     loadLikedArtworks,
-    getUserStats
+    getUserStats,
+    getArtworks,
+    getGalleryArtworks,
+    getRecommendations,
+    getPopularArtworks
   }
 }) 

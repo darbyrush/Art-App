@@ -4,8 +4,8 @@ import { useAuthStore } from '@/stores/auth'
 const routes = [
   {
     path: '/',
-    name: 'Home',
-    component: () => import('@/views/HomeView.vue'),
+    name: 'Exhibit',
+    component: () => import('@/views/ExhibitView.vue'),
     meta: { requiresAuth: true }
   },
   {
@@ -45,7 +45,7 @@ router.beforeEach((to, from, next) => {
   
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
-  } else if (to.meta.requiresAuth === false && authStore.isAuthenticated) {
+  } else if (to.path === '/login' && authStore.isAuthenticated) {
     next('/')
   } else {
     next()
