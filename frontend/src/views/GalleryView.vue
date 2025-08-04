@@ -1,15 +1,14 @@
 <template>
   <div class="min-h-screen bg-gray-50">
     <!-- Header -->
-    <header class="bg-white shadow-sm border-b">
+    <header class="bg-white shadow-sm border-b sticky top-0 z-50">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center py-4">
-          <div class="flex items-center space-x-4">
-            <h1 class="text-2xl font-serif font-bold text-gray-900">🎨 Art Explorer</h1>
-            <nav class="flex space-x-4">
-              <router-link to="/exhibit" class="text-gray-600 hover:text-gray-900">Exhibit</router-link>
-              <router-link to="/explorer" class="text-gray-600 hover:text-gray-900">Explorer</router-link>
-              <router-link to="/profile" class="text-gray-600 hover:text-gray-900">Profile</router-link>
+        <div class="flex justify-between items-center py-3 sm:py-4">
+          <div class="flex items-center space-x-2 sm:space-x-4">
+            <h1 class="text-lg sm:text-2xl font-serif font-bold text-gray-900">🎨 Gallery</h1>
+            <nav class="flex space-x-2 sm:space-x-4">
+              <router-link to="/" class="text-sm sm:text-base text-gray-600 hover:text-gray-900 px-2 py-1 rounded">Exhibit</router-link>
+              <router-link to="/profile" class="text-sm sm:text-base text-gray-600 hover:text-gray-900 px-2 py-1 rounded">Profile</router-link>
             </nav>
           </div>
         </div>
@@ -17,19 +16,19 @@
     </header>
 
     <!-- Gallery Grid -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
       <!-- Loading State -->
-      <div v-if="loading && likedArtworks.length === 0" class="text-center py-12">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-        <p class="mt-4 text-gray-600">Loading your gallery...</p>
+      <div v-if="loading && likedArtworks.length === 0" class="text-center py-8 sm:py-12">
+        <div class="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-2 border-primary-600 mx-auto"></div>
+        <p class="mt-2 sm:mt-4 text-sm sm:text-base text-gray-600">Loading your gallery...</p>
       </div>
 
       <!-- Empty State -->
-      <div v-else-if="likedArtworks.length === 0 && !loading" class="text-center py-12">
-        <div class="text-6xl mb-4">🖼️</div>
-        <h2 class="text-2xl font-serif font-bold mb-2">Your Gallery is Empty</h2>
-        <p class="text-gray-600 mb-6">Like some artworks in the Exhibit to see them here.</p>
-        <router-link to="/exhibit" class="btn-primary">
+      <div v-else-if="likedArtworks.length === 0 && !loading" class="text-center py-8 sm:py-12">
+        <div class="text-4xl sm:text-6xl mb-4">🖼️</div>
+        <h2 class="text-xl sm:text-2xl font-serif font-bold mb-2">Your Gallery is Empty</h2>
+        <p class="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 px-4">Like some artworks in the Exhibit to see them here.</p>
+        <router-link to="/" class="btn-primary text-sm sm:text-base px-4 py-2">
           Browse Exhibit
         </router-link>
       </div>
@@ -126,7 +125,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useArtworkStore } from '@/stores/artwork'
@@ -151,9 +150,11 @@ const loadLikedArtworks = async () => {
   
   loading.value = true
   try {
-    // Get all artworks and filter for liked ones
-    const allArtworks = await artworkStore.getArtworks({ page: 1, limit: 100 })
-    likedArtworks.value = allArtworks.filter(artwork => isArtworkLiked(artwork.id))
+    console.log('Loading liked artworks...')
+    // Use the proper method to get liked artworks
+    await artworkStore.loadLikedArtworks()
+    likedArtworks.value = artworkStore.likedArtworks
+    console.log('Loaded liked artworks:', likedArtworks.value.length)
   } catch (error) {
     console.error('Error loading liked artworks:', error)
   } finally {
@@ -162,26 +163,20 @@ const loadLikedArtworks = async () => {
 }
 
 const isArtworkLiked = (artworkId) => {
-  return artworkStore.likedArtworks.includes(artworkId)
+  return likedArtworks.value.some(artwork => artwork.id === artworkId)
 }
 
 const toggleLike = async (artworkId) => {
   try {
-    if (isArtworkLiked(artworkId)) {
-      await artworkStore.unlikeArtwork(artworkId)
+    const isLiked = isArtworkLiked(artworkId)
+    if (isLiked) {
+      await artworkStore.likeArtwork(artworkId, false) // Unlike
       // Remove from liked artworks list
       likedArtworks.value = likedArtworks.value.filter(art => art.id !== artworkId)
     } else {
-      await artworkStore.likeArtwork(artworkId)
-      // Add to liked artworks list if not already there
-      const artwork = likedArtworks.value.find(art => art.id === artworkId)
-      if (!artwork) {
-        const allArtworks = await artworkStore.getArtworks({ page: 1, limit: 100 })
-        const foundArtwork = allArtworks.find(art => art.id === artworkId)
-        if (foundArtwork) {
-          likedArtworks.value.push(foundArtwork)
-        }
-      }
+      await artworkStore.likeArtwork(artworkId, true) // Like
+      // Reload liked artworks to get the updated list
+      await loadLikedArtworks()
     }
   } catch (error) {
     console.error('Error toggling like:', error)
@@ -228,6 +223,21 @@ onMounted(() => {
   }
   loadLikedArtworks()
 })
+
+// Refresh gallery when route is activated
+onActivated(() => {
+  loadLikedArtworks()
+})
+
+// Also refresh when the component is shown (for non-keep-alive routes)
+const refreshGallery = () => {
+  if (authStore.isAuthenticated) {
+    loadLikedArtworks()
+  }
+}
+
+// Expose refresh method for parent components
+defineExpose({ refreshGallery })
 </script>
 
 <style scoped>
@@ -385,25 +395,65 @@ onMounted(() => {
 /* Responsive Design */
 @media (max-width: 640px) {
   .gallery-grid {
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 16px;
-    padding: 16px 0;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    padding: 8px 0;
   }
   
   .image-container {
-    height: 250px;
+    height: 200px;
   }
   
   .artwork-info {
     padding: 12px;
   }
+  
+  .artwork-title {
+    font-size: 14px;
+  }
+  
+  .artwork-artist {
+    font-size: 12px;
+  }
+  
+  .artwork-meta {
+    font-size: 11px;
+  }
 }
 
 @media (max-width: 480px) {
   .gallery-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 8px;
+    padding: 4px 0;
+  }
+  
+  .image-container {
+    height: 160px;
+  }
+  
+  .artwork-info {
+    padding: 8px;
+  }
+  
+  .artwork-title {
+    font-size: 13px;
+  }
+  
+  .artwork-artist {
+    font-size: 11px;
+  }
+  
+  .artwork-meta {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 360px) {
+  .gallery-grid {
     grid-template-columns: 1fr;
     gap: 12px;
-    padding: 12px 0;
+    padding: 8px 0;
   }
   
   .image-container {
