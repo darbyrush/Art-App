@@ -46,7 +46,10 @@ cors_origins = [
     "http://localhost:8501", 
     "http://127.0.0.1:8501",
     "https://art-app-rosy.vercel.app",
-    "https://*.vercel.app"
+    "https://*.vercel.app",
+    "https://art-app-backend.railway.app",
+    "https://*.railway.app",
+    "https://art-app.railway.internal"
 ]
 
 # Add production origins from environment variable
