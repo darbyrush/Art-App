@@ -4,7 +4,7 @@ from backend.metadata import MetadataProcessor
 
 def fetch_random_artwork(seen_urls: set[str], sources=None, selected_sources=None):
     """
-    Fetch random artwork from selected sources.
+    Fetch random artwork from selected sources with improved diversity.
     
     Args:
         seen_urls: Set of already seen image URLs
@@ -27,10 +27,11 @@ def fetch_random_artwork(seen_urls: set[str], sources=None, selected_sources=Non
     
     all_artworks = []
     
-    # Try each source until we find artworks
+    # Try each source to get a diverse collection
     source_names = list(available_sources.keys())
     random.shuffle(source_names)  # Randomize source order
     
+    # Fetch from all sources to increase diversity
     for source_name in source_names:
         fetcher = available_sources[source_name]
         try:
@@ -48,10 +49,6 @@ def fetch_random_artwork(seen_urls: set[str], sources=None, selected_sources=Non
                 enriched_artwork = MetadataProcessor.enrich_metadata(result)
                 enriched_artwork['search_tags'] = MetadataProcessor.get_search_tags(enriched_artwork)
                 all_artworks.append(enriched_artwork)
-            
-            # If we have enough artworks, stop fetching
-            if len(all_artworks) >= 20:
-                break
                 
         except Exception as e:
             print(f"Error in {source_name} fetcher: {e}")
@@ -65,7 +62,33 @@ def fetch_random_artwork(seen_urls: set[str], sources=None, selected_sources=Non
         not art['image_url'].lower().endswith('.gif')
     ]
     
-    return random.choice(unseen_artworks) if unseen_artworks else None
+    # If we have enough unseen artworks, return a random one
+    if unseen_artworks:
+        return random.choice(unseen_artworks)
+    
+    # If no unseen artworks, try to get more from sources that were successful
+    print("No unseen artworks found, expanding search...")
+    for source_name in source_names:
+        fetcher = available_sources[source_name]
+        try:
+            # Force a fresh fetch by passing empty seen_urls
+            result = fetcher(set())
+            if isinstance(result, list):
+                for artwork in result:
+                    if (artwork.get('image_url') and 
+                        not artwork['image_url'].lower().endswith('.gif')):
+                        enriched_artwork = MetadataProcessor.enrich_metadata(artwork)
+                        enriched_artwork['search_tags'] = MetadataProcessor.get_search_tags(enriched_artwork)
+                        return enriched_artwork
+            elif isinstance(result, dict) and result.get('image_url'):
+                if not result['image_url'].lower().endswith('.gif'):
+                    enriched_artwork = MetadataProcessor.enrich_metadata(result)
+                    enriched_artwork['search_tags'] = MetadataProcessor.get_search_tags(enriched_artwork)
+                    return enriched_artwork
+        except Exception as e:
+            continue
+    
+    return None
 
 def fetch_artworks_from_sources(seen_urls: set[str], selected_sources: List[str], max_per_source: int = 5):
     """

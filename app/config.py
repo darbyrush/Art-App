@@ -27,7 +27,7 @@ class AppConfig:
     API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
     API_TIMEOUT = 30
     
-    # Available museum sources
+    # Available museum sources (updated based on testing)
     AVAILABLE_SOURCES = [
         'all',
         'Cleveland Museum of Art',

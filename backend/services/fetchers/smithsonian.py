@@ -17,9 +17,12 @@ def fetch_from_smithsonian(seen_urls: set[str] = set()):
     
     artworks = []
     retry_count = 0
-    start_index = random.randint(0, 100)  # start from a random page to reduce repeats
+    # Try multiple start indices to get more diverse artworks
+    start_indices = random.sample(range(0, 200), min(3, 200))
 
-    while retry_count < MAX_RETRIES and len(artworks) == 0:
+    for start_index in start_indices:
+        if len(artworks) >= 10:  # Stop if we have enough
+            break
         params = {
             "api_key": api_key,
             "q": "online_media_type:Images",
@@ -39,8 +42,6 @@ def fetch_from_smithsonian(seen_urls: set[str] = set()):
             response = fetch_with_retry(SEARCH_URL, params=params)
             if not response or not response.ok:
                 print(f"[smithsonian] Search failed with status {response.status_code if response else 'No response'}")
-                retry_count += 1
-                start_index += RESULTS_PER_PAGE
                 continue
 
             data = response.json()
@@ -108,9 +109,7 @@ def fetch_from_smithsonian(seen_urls: set[str] = set()):
                 source="Smithsonian"
             ))
 
-        retry_count += 1
-        start_index += RESULTS_PER_PAGE  # go to next batch if needed
-        time.sleep(0.1)  # Reduced sleep time for better performance
+        time.sleep(0.1)  # Small delay between requests
 
     print(f"[smithsonian] Returning {len(artworks)} artworks")
     return artworks
