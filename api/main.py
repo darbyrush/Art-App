@@ -22,7 +22,11 @@ from api.services import ArtworkService, UserService
 from api.artwork_populator import populate_database, get_stats
 
 # Initialize database
-init_db()
+try:
+    init_db()
+    print("Database initialized successfully")
+except Exception as e:
+    print(f"Warning: Could not initialize database: {e}")
 
 # Start background scheduler
 try:
@@ -249,7 +253,24 @@ def get_gallery_artworks(
 @app.get("/health")
 def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "timestamp": datetime.utcnow()}
+    try:
+        # Test database connection
+        db = next(get_db())
+        db.execute("SELECT 1")
+        db.close()
+        return {
+            "status": "healthy", 
+            "message": "Art Explorer API is running",
+            "database": "connected",
+            "timestamp": datetime.utcnow()
+        }
+    except Exception as e:
+        return {
+            "status": "degraded",
+            "message": "Art Explorer API is running",
+            "database": f"error: {str(e)}",
+            "timestamp": datetime.utcnow()
+        }
 
 @app.get("/placeholder/{source}.jpg")
 def get_placeholder_image(source: str):
