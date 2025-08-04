@@ -37,43 +37,12 @@ except Exception as e:
 
 app = FastAPI(title="Art Explorer API", version="1.0.0")
 
-# CORS middleware
-cors_origins = [
-    "http://localhost:3000", 
-    "http://127.0.0.1:3000",
-    "http://localhost:3001", 
-    "http://127.0.0.1:3001",
-    "http://localhost:8501", 
-    "http://127.0.0.1:8501",
-    "https://art-app-backend.railway.app",
-    "https://art-app.railway.internal"
-]
+# Import CORS configuration
+from api.cors_config import get_cors_middleware, DynamicCORSMiddleware
 
-# Add production origins from environment variable
-import os
-if os.getenv("CORS_ORIGINS"):
-    cors_origins.extend(os.getenv("CORS_ORIGINS").split(","))
-
-# Add all known Vercel domains
-vercel_domains = [
-    "https://art-app-rosy.vercel.app",
-    "https://art-oxd1cyyg6-darbyrushs-projects.vercel.app",
-    "https://art-our6lxwlw-darbyrushs-projects.vercel.app",
-    "https://art-cz49xzb9h-darbyrushs-projects.vercel.app",
-    "https://art-app.vercel.app",
-    "https://art-explorer.vercel.app",
-    "https://art-gallery.vercel.app"
-]
-
-cors_origins.extend(vercel_domains)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Add CORS middleware
+app.add_middleware(get_cors_middleware())
+app.add_middleware(DynamicCORSMiddleware)
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -86,6 +55,16 @@ user_service = UserService()
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
     return user_service.create_user(db, user)
+
+@app.post("/create-test-user", response_model=UserResponse)
+def create_test_user(db: Session = Depends(get_db)):
+    """Create a test user for development"""
+    test_user_data = UserCreate(
+        username="testuser",
+        email="test@example.com",
+        password="testpass123"
+    )
+    return user_service.create_user(db, test_user_data)
 
 @app.post("/token", response_model=Token)
 def login_for_access_token(
