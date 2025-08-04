@@ -49,4 +49,8 @@ coverage.xml
 **/venv/
 **/env/
 **/.env
-**/Dockerfile 
+**/Dockerfile
+
+# Node.js patterns
+**/node_modules/
+**/package-lock.json 
