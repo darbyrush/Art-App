@@ -80,7 +80,7 @@ def fetch_from_walters(seen_urls: set[str] = set()):
                 "origin": origin,
                 "department": "Walters Art Museum Collection",
                 "image_url": image_url,
-                "source": "Walters Art Museum"
+                "source": "walters"
             })
             
             # Limit results

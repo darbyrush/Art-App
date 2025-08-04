@@ -60,7 +60,7 @@ def fetch_from_cleveland(seen_urls: set[str]):
                     "origin": item.get("culture", ["Unknown"])[0] if isinstance(item.get("culture"), list) else item.get("culture", "Unknown"),
                     "department": item.get("department", "Unknown"),
                     "image_url": image_url,
-                    "source": "Cleveland Museum of Art"
+                    "source": "cleveland"
                 })
                 
                 # Limit results per page to avoid overwhelming

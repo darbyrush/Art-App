@@ -1,14 +1,18 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func, desc
 from typing import List, Optional
 from datetime import datetime, timedelta
 import json
 import random
+import logging
 
 from database.models import User, Artwork, UserLike, UserRating, UserNote, APICache
 from api.schemas import UserCreate, UserResponse, ArtworkResponse, UserStats
 from api.auth import get_password_hash, verify_password
 from backend.services.fetchers.random_art import fetch_random_artwork, fetch_artworks_from_sources
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 class UserService:
     def create_user(self, db: Session, user: UserCreate) -> UserResponse:
@@ -107,21 +111,20 @@ class UserService:
     
     def get_user_likes(self, db: Session, user_id: str) -> List[ArtworkResponse]:
         """Get all artworks liked by user"""
-        likes = db.query(UserLike).filter(
+        liked_artworks = db.query(Artwork).join(UserLike).filter(
             and_(UserLike.user_id == user_id, UserLike.liked == True)
         ).all()
-        
-        artwork_ids = [like.artwork_id for like in likes]
-        artworks = db.query(Artwork).filter(Artwork.id.in_(artwork_ids)).all()
-        
-        return [ArtworkResponse.model_validate(artwork) for artwork in artworks]
+        return [ArtworkResponse.model_validate(artwork) for artwork in liked_artworks]
     
     def get_user_stats(self, db: Session, user_id: str) -> UserStats:
         """Get user statistics"""
-        # Total interactions
-        total_interactions = db.query(UserLike).filter(UserLike.user_id == user_id).count()
+        # Total interactions (likes + ratings + notes)
+        likes_count = db.query(UserLike).filter(UserLike.user_id == user_id).count()
+        ratings_count = db.query(UserRating).filter(UserRating.user_id == user_id).count()
+        notes_count = db.query(UserNote).filter(UserNote.user_id == user_id).count()
+        total_interactions = likes_count + ratings_count + notes_count
         
-        # Liked artworks
+        # Liked artworks count
         liked_count = db.query(UserLike).filter(
             and_(UserLike.user_id == user_id, UserLike.liked == True)
         ).count()
@@ -145,12 +148,13 @@ class UserService:
 
 class ArtworkService:
     def get_random_artwork(self, db: Session, sources: List[str], user_id: str) -> ArtworkResponse:
-        """Get a random artwork from specified sources"""
-        # First try to get from database
+        """Get a random artwork with improved diversity and dynamic loading"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # First try to get from database with diversity improvements
         from sqlalchemy import func
-        existing_artwork = db.query(Artwork).filter(
-            Artwork.source.in_(sources) if "all" not in sources else True
-        ).order_by(func.random()).first()
+        existing_artwork = self._get_diverse_artwork(db, sources, user_id)
         
         if existing_artwork:
             return ArtworkResponse.model_validate(existing_artwork)
@@ -163,24 +167,91 @@ class ArtworkService:
             # Try to populate from one of the requested sources
             for source in sources:
                 if source in populator.sources:
-                    saved_count = populator.fetch_and_save_from_source(source, populator.sources[source], limit=1)
+                    logger.info(f"Attempting to fetch from {source}...")
+                    saved_count = populator.fetch_and_save_from_source(source, populator.sources[source], limit=3)
                     if saved_count > 0:
                         # Try to get the newly saved artwork
-                        new_artwork = db.query(Artwork).filter(
-                            Artwork.source.ilike(f"%{source}%")
-                        ).order_by(Artwork.created_at.desc()).first()
-                        
+                        new_artwork = self._get_diverse_artwork(db, sources, user_id)
                         if new_artwork:
                             return ArtworkResponse.model_validate(new_artwork)
         except Exception as e:
             logger.error(f"Error fetching from external APIs: {e}")
         
-        # Fallback to sample artworks if external APIs fail
+        # Fallback to any artwork in database
         sample_artwork = db.query(Artwork).order_by(func.random()).first()
         if sample_artwork:
             return ArtworkResponse.model_validate(sample_artwork)
         
-        raise ValueError("No artwork found")
+        # If still no artwork, try to populate from all sources
+        try:
+            logger.info("No artworks found, attempting to populate from all sources...")
+            from api.artwork_populator import populate_database
+            results = populate_database(artworks_per_source=2)
+            
+            # Try to get any newly saved artwork
+            new_artwork = self._get_diverse_artwork(db, sources, user_id)
+            if new_artwork:
+                return ArtworkResponse.model_validate(new_artwork)
+        except Exception as e:
+            logger.error(f"Error populating database: {e}")
+        
+        raise ValueError("No artwork found - please try again in a moment")
+    
+    def _get_diverse_artwork(self, db: Session, sources: List[str], user_id: str) -> Optional[Artwork]:
+        """Get artwork with diversity improvements"""
+        from sqlalchemy import func
+        
+        # Get user's recently seen artworks to avoid repetition
+        recent_artworks = db.query(UserLike.artwork_id).filter(
+            and_(UserLike.user_id == user_id, UserLike.created_at >= datetime.utcnow() - timedelta(hours=24))
+        ).all()
+        recent_ids = [r[0] for r in recent_artworks]
+        
+        # Build query with diversity filters
+        query = db.query(Artwork)
+        
+        # Filter by sources
+        if "all" not in sources:
+            query = query.filter(Artwork.source.in_(sources))
+        
+        # Exclude recently seen artworks
+        if recent_ids:
+            query = query.filter(~Artwork.id.in_(recent_ids))
+        
+        # Try to get artwork from less popular sources first
+        artwork = query.order_by(func.random()).first()
+        
+        if not artwork:
+            # If no diverse artwork found, get any random artwork
+            query = db.query(Artwork)
+            if "all" not in sources:
+                query = query.filter(Artwork.source.in_(sources))
+            artwork = query.order_by(func.random()).first()
+        
+        return artwork
+    
+    def get_artwork_recommendations(self, db: Session, user_id: str, limit: int = 10) -> List[ArtworkResponse]:
+        """Get personalized artwork recommendations based on user preferences"""
+        # Get user's liked sources
+        liked_sources = db.query(Artwork.source).join(UserLike).filter(
+            and_(UserLike.user_id == user_id, UserLike.liked == True)
+        ).distinct().all()
+        liked_source_names = [s[0] for s in liked_sources]
+        
+        # Get artworks from liked sources
+        recommendations = db.query(Artwork).filter(
+            Artwork.source.in_(liked_source_names)
+        ).order_by(func.random()).limit(limit).all()
+        
+        return [ArtworkResponse.model_validate(artwork) for artwork in recommendations]
+    
+    def get_popular_artworks(self, db: Session, limit: int = 10) -> List[ArtworkResponse]:
+        """Get most popular artworks based on likes"""
+        popular_artworks = db.query(Artwork).join(UserLike).filter(
+            UserLike.liked == True
+        ).group_by(Artwork.id).order_by(func.count(UserLike.id).desc()).limit(limit).all()
+        
+        return [ArtworkResponse.model_validate(artwork) for artwork in popular_artworks]
     
     def search_artworks(self, db: Session, source: Optional[str], artist: Optional[str], 
                        date_range: Optional[str], user_id: str) -> List[ArtworkResponse]:

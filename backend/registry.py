@@ -3,7 +3,6 @@ from backend.services.fetchers.met import fetch_from_met
 from backend.services.fetchers.chicago import fetch_from_chicago  
 from backend.services.fetchers.harvard import fetch_from_harvard
 from backend.services.fetchers.smithsonian import fetch_from_smithsonian
-from backend.services.fetchers.europeana import fetch_from_europeana
 from backend.services.fetchers.walters import fetch_from_walters
 from backend.services.fetchers.national_gallery import fetch_from_national_gallery
 from backend.config import config
@@ -35,11 +34,7 @@ def get_available_sources():
     else:
         print("Info: Harvard API key not found. Harvard source will be disabled.")
     
-    # Include Europeana if API key is available
-    if available_keys.get("europeana", False):
-        sources["europeana"] = fetch_from_europeana
-    else:
-        print("Info: Europeana API key not found. Europeana source will be disabled.")
+
     
     return sources
 

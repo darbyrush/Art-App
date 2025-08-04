@@ -18,12 +18,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.config import SessionLocal
 from database.models import Artwork, APICache
 from backend.services.fetchers.random_art import fetch_artworks_from_sources
-from backend.services.fetchers.cleveland import fetch_from_cleveland
-from backend.services.fetchers.smithsonian import fetch_from_smithsonian
-from backend.services.fetchers.met import fetch_from_met
-from backend.services.fetchers.harvard import fetch_from_harvard
-from backend.services.fetchers.national_gallery import fetch_from_national_gallery
-from backend.services.fetchers.walters import fetch_from_walters
+from backend.registry import SOURCES
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,14 +28,7 @@ class ArtworkPopulator:
     """Service to populate database with artworks from external APIs"""
     
     def __init__(self):
-        self.sources = {
-            'cleveland': fetch_from_cleveland,
-            'smithsonian': fetch_from_smithsonian,
-            'met': fetch_from_met,
-            'harvard': fetch_from_harvard,
-            'national_gallery': fetch_from_national_gallery,
-            'walters': fetch_from_walters
-        }
+        self.sources = SOURCES
     
     def get_db(self) -> Session:
         """Get database session"""

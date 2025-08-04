@@ -21,6 +21,13 @@ from api.artwork_populator import populate_database, get_stats
 # Initialize database
 init_db()
 
+# Start background scheduler
+try:
+    from api.scheduler import start_background_scheduler
+    start_background_scheduler()
+except Exception as e:
+    print(f"Warning: Could not start background scheduler: {e}")
+
 app = FastAPI(title="Art Explorer API", version="1.0.0")
 
 # CORS middleware
@@ -82,8 +89,19 @@ def get_random_artwork(
     db: Session = Depends(get_db)
 ):
     """Get a random artwork from specified sources"""
-    source_list = sources.split(",") if sources else ["all"]
-    return artwork_service.get_random_artwork(db, source_list, current_user.id)
+    try:
+        source_list = sources.split(",") if sources else ["all"]
+        return artwork_service.get_random_artwork(db, source_list, current_user.id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching artwork: {str(e)}"
+        )
 
 @app.post("/artworks/{artwork_id}/like")
 def like_artwork(
@@ -142,6 +160,24 @@ def search_artworks(
     """Search artworks with filters"""
     return artwork_service.search_artworks(db, source, artist, date_range, current_user.id)
 
+@app.get("/artworks/recommendations", response_model=List[ArtworkResponse])
+def get_recommendations(
+    limit: int = 10,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get personalized artwork recommendations"""
+    return artwork_service.get_artwork_recommendations(db, current_user.id, limit)
+
+@app.get("/artworks/popular", response_model=List[ArtworkResponse])
+def get_popular_artworks(
+    limit: int = 10,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get most popular artworks"""
+    return artwork_service.get_popular_artworks(db, limit)
+
 @app.get("/health")
 def health_check():
     """Health check endpoint"""
@@ -170,12 +206,44 @@ def populate_database_endpoint(
 def get_database_stats(current_user: User = Depends(get_current_user)):
     """Get database statistics (admin only)"""
     try:
-        stats = get_stats()
-        return stats
+        from api.background_tasks import background_manager
+        return background_manager.get_database_stats()
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error getting database stats: {str(e)}"
+        )
+
+@app.post("/admin/trigger-population")
+def trigger_population(current_user: User = Depends(get_current_user)):
+    """Manually trigger database population (admin only)"""
+    try:
+        from api.background_tasks import background_manager
+        result = background_manager.populate_database_background()
+        return {
+            "message": "Database population triggered successfully",
+            "result": result
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error triggering population: {str(e)}"
+        )
+
+@app.post("/admin/cleanup")
+def cleanup_database(current_user: User = Depends(get_current_user)):
+    """Clean up old artworks (admin only)"""
+    try:
+        from api.background_tasks import background_manager
+        deleted_count = background_manager.cleanup_old_artworks()
+        return {
+            "message": "Database cleanup completed",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error cleaning up database: {str(e)}"
         )
 
 if __name__ == "__main__":

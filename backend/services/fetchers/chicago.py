@@ -30,7 +30,7 @@ def get_random_chicago_artwork(seen_urls: set[str]):
                     "origin": item.get("place_of_origin"),
                     "department": item.get("department_title"),
                     "image_url": image_url,
-                    "source": "Art Institute of Chicago"
+                    "source": "chicago"
                 })
                 
                 # Limit results per page

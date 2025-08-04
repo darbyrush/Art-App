@@ -114,7 +114,7 @@ def fetch_from_national_gallery(seen_urls: set[str] = set()):
                 "origin": "National Gallery of Art Collection",
                 "department": classification,
                 "image_url": image_url,
-                "source": "National Gallery of Art"
+                "source": "national_gallery"
             })
             
             # Limit results

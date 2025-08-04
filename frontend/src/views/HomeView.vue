@@ -37,7 +37,7 @@
                   v-model="selectedSources"
                   class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                 >
-                <span class="ml-2 text-sm">{{ source }}</span>
+                <span class="ml-2 text-sm">{{ getSourceDisplayName(source) }}</span>
               </label>
             </div>
             
@@ -80,7 +80,7 @@
             <div v-else class="instagram-container">
               <!-- Artwork Header -->
               <div class="flex items-center justify-between p-4 border-b border-gray-200">
-                <div class="font-semibold text-gray-900">{{ currentArtwork.source }}</div>
+                <div class="font-semibold text-gray-900">{{ getSourceDisplayName(currentArtwork.source) }}</div>
                 <div class="text-gray-500">🎨</div>
               </div>
 
@@ -233,6 +233,19 @@ const submitRating = async () => {
 const logout = () => {
   authStore.logout()
   router.push('/login')
+}
+
+const getSourceDisplayName = (source) => {
+  const displayNames = {
+    'cleveland': 'Cleveland Museum of Art',
+    'met': 'Metropolitan Museum of Art',
+    'chicago': 'Art Institute of Chicago',
+    'walters': 'Walters Art Museum',
+    'national_gallery': 'National Gallery of Art',
+    'smithsonian': 'Smithsonian American Art Museum',
+    'harvard': 'Harvard Art Museums'
+  }
+  return displayNames[source] || source
 }
 
 const loadStats = async () => {

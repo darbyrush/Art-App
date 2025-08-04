@@ -11,13 +11,13 @@ export const useArtworkStore = defineStore('artwork', () => {
 
   const availableSources = [
     'all',
-    'Cleveland Museum of Art',
-    'Metropolitan Museum of Art',
-    'Art Institute of Chicago',
-    'Walters Art Museum',
-    'National Gallery of Art',
-    'Smithsonian American Art Museum',
-    'Harvard Art Museums'
+    'cleveland',
+    'met',
+    'chicago',
+    'walters',
+    'national_gallery',
+    'smithsonian',
+    'harvard'
   ]
 
   const getRandomArtwork = async () => {

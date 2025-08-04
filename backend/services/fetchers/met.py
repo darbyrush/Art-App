@@ -63,7 +63,7 @@ def fetch_from_met(seen_urls: set[str] = set()):
                     "origin": data.get("culture") or data.get("country", "Unknown"),
                     "department": data.get("department", "Unknown"),
                     "image_url": image_url,
-                    "source": "Metropolitan Museum of Art"
+                    "source": "met"
                 })
                 
                 # If we have enough results from this range, move to next

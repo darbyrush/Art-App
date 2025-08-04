@@ -50,7 +50,7 @@ def fetch_from_harvard(seen_urls: set[str] = set()):
             title=item.get("title", "Unknown"),
             artist=artist,
             image_url=image_url,
-            source="Harvard Art Museums"
+            source="harvard"
         ))
         
         # Limit results

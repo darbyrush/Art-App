@@ -106,7 +106,7 @@ def fetch_from_smithsonian(seen_urls: set[str] = set()):
                 title=title,
                 artist=artist,
                 image_url=image_url,
-                source="Smithsonian"
+                source="smithsonian"
             ))
 
         time.sleep(0.1)  # Small delay between requests
