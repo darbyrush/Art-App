@@ -75,6 +75,43 @@ The application will be available at:
 - **Frontend**: `http://localhost:3000`
 - **Backend API**: `http://localhost:8000`
 
+## Project Structure
+
+```
+Art App/
+├── frontend/              # Vue.js Frontend
+│   ├── src/
+│   │   ├── components/    # Reusable Vue components
+│   │   ├── views/         # Page components
+│   │   ├── stores/        # Pinia state management
+│   │   ├── utils/         # API client and utilities
+│   │   ├── router/        # Vue Router configuration
+│   │   └── style.css      # Tailwind CSS styles
+│   ├── package.json       # Dependencies and scripts
+│   ├── vite.config.js     # Vite configuration
+│   └── tailwind.config.js # Tailwind CSS configuration
+├── api/                   # FastAPI Backend API
+│   ├── main.py           # Main API application
+│   ├── auth.py           # Authentication logic
+│   ├── services.py       # Business logic
+│   ├── schemas.py        # Pydantic models
+│   └── artwork_populator.py # Database population
+├── backend/              # Backend services
+│   ├── services/         # Artwork fetchers
+│   ├── registry.py       # Service registry
+│   ├── config.py         # Configuration
+│   ├── utils.py          # Utility functions
+│   └── metadata.py       # Metadata handling
+├── database/             # Database models
+│   ├── models.py         # SQLAlchemy models
+│   └── config.py         # Database configuration
+├── scripts/              # Utility scripts
+├── docs/                 # Documentation
+├── docker/               # Docker configuration
+├── tests/                # Test files
+└── requirements.txt      # Python dependencies
+```
+
 ## Tech Stack
 
 ### Frontend

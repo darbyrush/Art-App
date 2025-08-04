@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List, Optional
-import json
 
 from database.config import get_db, init_db
 from database.models import User, Artwork, UserLike, UserRating, UserNote, APICache
