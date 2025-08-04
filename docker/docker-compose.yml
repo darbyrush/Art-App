@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: art_explorer_db
+    environment:
+      POSTGRES_DB: art_explorer
+      POSTGRES_USER: art_user
+      POSTGRES_PASSWORD: art_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - art_explorer_network
+
+  # FastAPI Backend
+  api:
+    build: .
+    container_name: art_explorer_api
+    environment:
+      DATABASE_URL: postgresql://art_user:art_password@postgres:5432/art_explorer
+      SECRET_KEY: your-secret-key-here
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    networks:
+      - art_explorer_network
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Streamlit Frontend
+  frontend:
+    build: .
+    container_name: art_explorer_frontend
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+    networks:
+      - art_explorer_network
+    command: streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+
+volumes:
+  postgres_data:
+
+networks:
+  art_explorer_network:
+    driver: bridge 

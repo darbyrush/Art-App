@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-from frontend.utils import get_user_liked_artworks, update_user_artwork_rating, clear_user_feedback, get_user_stats
-from frontend.auth import is_logged_in, get_current_user, logout_user, render_login_page
+from frontend.api_client import api_client
+from frontend.components.auth import is_logged_in, get_current_user, logout_user, render_login_page, require_auth
 import plotly.express as px
 from collections import Counter
 import re
@@ -13,10 +13,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# Check if user is logged in
-if not is_logged_in():
-    render_login_page()
-    st.stop()
+# Global authentication check
+require_auth()
 
 # Get current user
 current_user = get_current_user()
@@ -141,7 +139,12 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Load user-specific data
-liked_df = get_user_liked_artworks(current_user)
+try:
+    liked_artworks = api_client.get_user_likes()
+    liked_df = pd.DataFrame(liked_artworks) if liked_artworks else pd.DataFrame()
+except Exception as e:
+    st.error(f"Error loading liked artworks: {e}")
+    liked_df = pd.DataFrame()
 
 if liked_df.empty:
     st.markdown("""
@@ -156,7 +159,11 @@ else:
     st.markdown('<div class="stats-card">', unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns(4)
     
-    user_stats = get_user_stats(current_user)
+    try:
+        user_stats = api_client.get_user_stats()
+    except Exception as e:
+        st.error(f"Error loading user stats: {e}")
+        user_stats = {}
     
     with col1:
         st.metric("Total Artworks", user_stats['liked_artworks'])
@@ -267,7 +274,7 @@ else:
                                 {source}
                             </span>
                             <span class="rating-stars">
-                                {'⭐' * int(artwork.get('rating', 0))}
+                                {'⭐' * int(artwork.get('rating', 0)) if str(artwork.get('rating', 0)).isdigit() else 0}
                             </span>
                         </div>
                         <p style="margin: 0.5rem 0 0 0; font-size: 0.8rem; color: #666;">
@@ -288,23 +295,25 @@ else:
                     new_notes = st.text_area("Your notes", value=current_notes, key=f"notes_{idx}")
                     
                     # Rating section
-                    current_rating = int(artwork.get('rating', 0))
+                    rating_value = artwork.get('rating', 0)
+                    current_rating = int(rating_value) if str(rating_value).isdigit() else 0
                     new_rating = st.slider("Rating", 1, 5, current_rating, key=f"rating_{idx}")
                     
                     # Save button
                     if st.button("💾 Save Changes", key=f"save_{idx}"):
                         # Update the artwork data
-                        success = update_user_artwork_rating(
-                            current_user, 
-                            artwork.get('title', ''), 
-                            new_rating, 
-                            new_notes
-                        )
-                        if success:
-                            st.success("Changes saved!")
-                            st.rerun()
+                        artwork_id = artwork.get('id')
+                        if artwork_id:
+                            rating_success = api_client.rate_artwork(artwork_id, new_rating)
+                            note_success = api_client.add_note(artwork_id, new_notes)
+                            
+                            if rating_success and note_success:
+                                st.success("Changes saved!")
+                                st.rerun()
+                            else:
+                                st.error("Failed to save changes")
                         else:
-                            st.error("Failed to save changes")
+                            st.error("Cannot save changes - artwork ID not found")
     
     # Analytics section
     st.markdown("---")
@@ -365,9 +374,11 @@ else:
     confirm_clear = st.checkbox("I understand this will clear all my liked artworks and notes.")
     if confirm_clear:
         if st.button("⚠️ Clear All Gallery Items", type="secondary"):
-            clear_user_feedback(current_user)
-            st.success("Gallery cleared successfully!")
-            st.rerun()
+            st.warning("Clear gallery functionality not yet implemented in API")
+            # TODO: Implement clear gallery API endpoint
+            # clear_user_feedback(current_user)
+            # st.success("Gallery cleared successfully!")
+            # st.rerun()
 
 # Footer
 st.markdown("---")
