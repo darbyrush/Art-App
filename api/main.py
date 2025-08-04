@@ -47,6 +47,7 @@ cors_origins = [
     "http://127.0.0.1:8501",
     "https://art-app-rosy.vercel.app",
     "https://art-oxd1cyyg6-darbyrushs-projects.vercel.app",
+    "https://art-our6lxwlw-darbyrushs-projects.vercel.app",
     "https://*.vercel.app",
     "https://art-app-backend.railway.app",
     "https://*.railway.app",
