@@ -45,12 +45,7 @@ cors_origins = [
     "http://127.0.0.1:3001",
     "http://localhost:8501", 
     "http://127.0.0.1:8501",
-    "https://art-app-rosy.vercel.app",
-    "https://art-oxd1cyyg6-darbyrushs-projects.vercel.app",
-    "https://art-our6lxwlw-darbyrushs-projects.vercel.app",
-    "https://*.vercel.app",
     "https://art-app-backend.railway.app",
-    "https://*.railway.app",
     "https://art-app.railway.internal"
 ]
 
@@ -59,13 +54,34 @@ import os
 if os.getenv("CORS_ORIGINS"):
     cors_origins.extend(os.getenv("CORS_ORIGINS").split(","))
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Add all Vercel domains dynamically
+def is_vercel_domain(origin: str) -> bool:
+    """Check if origin is a Vercel domain"""
+    return origin.startswith("https://") and ".vercel.app" in origin
+
+# Custom CORS middleware that allows all Vercel domains
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+class CustomCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        
+        origin = request.headers.get("origin")
+        if origin:
+            # Allow all Vercel domains
+            if is_vercel_domain(origin) or origin in cors_origins:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+                response.headers["Access-Control-Allow-Methods"] = "*"
+                response.headers["Access-Control-Allow-Headers"] = "*"
+        
+        return response
+
+# Add custom CORS middleware that handles Vercel domains dynamically
+app.add_middleware(CustomCORSMiddleware)
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
