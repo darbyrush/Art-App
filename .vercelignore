@@ -40,4 +40,13 @@ coverage.xml
 .git
 .mypy_cache
 .pytest_cache
-.hypothesis 
+.hypothesis
+
+# Additional Python patterns
+**/requirements.txt
+**/*.py
+**/__pycache__/
+**/venv/
+**/env/
+**/.env
+**/Dockerfile 
