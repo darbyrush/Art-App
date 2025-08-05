@@ -64,12 +64,28 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
 @app.post("/create-test-user", response_model=UserResponse)
 def create_test_user(db: Session = Depends(get_db)):
     """Create a test user for development"""
-    test_user_data = UserCreate(
-        username="testuser",
-        email="test@example.com",
-        password="testpass123"
-    )
-    return user_service.create_user(db, test_user_data)
+    try:
+        test_user_data = UserCreate(
+            username="testuser",
+            email="test@example.com",
+            password="testpass123"
+        )
+        return user_service.create_user(db, test_user_data)
+    except ValueError as e:
+        if "already registered" in str(e):
+            # User already exists, return existing user
+            existing_user = db.query(User).filter(User.username == "testuser").first()
+            if existing_user:
+                return UserResponse.model_validate(existing_user)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating test user: {str(e)}"
+        )
 
 @app.post("/token", response_model=Token)
 def login_for_access_token(
