@@ -11,6 +11,9 @@ def get_cors_origins():
         "http://127.0.0.1:8501",
         "https://art-app-backend.railway.app",
         "https://art-app.railway.internal",
+        "https://art-app.railway.app",
+        # Add wildcard for any Railway domain
+        "https://*.railway.app",
         # Add all known Vercel domains
         "https://art-app-rosy.vercel.app",
         "https://art-oxd1cyyg6-darbyrushs-projects.vercel.app",
