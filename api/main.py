@@ -40,7 +40,7 @@ app = FastAPI(title="Art Explorer API", version="1.0.0")
 # Import CORS configuration
 from api.cors_config import get_cors_origins
 
-# Add CORS middleware
+# Add CORS middleware - Railway deployment test
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_origins(),
