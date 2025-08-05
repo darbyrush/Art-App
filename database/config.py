@@ -6,8 +6,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://darbyrush@localhost/art_explorer")
+# Database configuration - try multiple Railway environment variables
+DATABASE_URL = (
+    os.getenv("DATABASE_URL") or 
+    os.getenv("POSTGRES_URL") or 
+    os.getenv("RAILWAY_DATABASE_URL") or 
+    "postgresql://darbyrush@localhost/art_explorer"
+)
 
 # Debug database URL (without password for security)
 if DATABASE_URL:
@@ -15,6 +20,10 @@ if DATABASE_URL:
     print(f"Database URL: {debug_url}")
 else:
     print("Warning: DATABASE_URL environment variable not found")
+    print("Available environment variables:")
+    for key, value in os.environ.items():
+        if 'DATABASE' in key or 'POSTGRES' in key:
+            print(f"  {key}: {value[:20]}..." if len(value) > 20 else f"  {key}: {value}")
 
 # Handle Railway's PostgreSQL URL format
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
