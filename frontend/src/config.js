@@ -4,7 +4,7 @@ const config = {
     apiUrl: 'http://localhost:8000'
   },
   production: {
-    apiUrl: import.meta.env.VITE_API_URL || 'https://art-app-production.up.railway.app'
+    apiUrl: 'https://art-app-production.up.railway.app'  // Hardcoded for now
   }
 }
 
