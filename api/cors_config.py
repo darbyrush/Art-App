@@ -1,35 +1,22 @@
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+class DynamicCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        
+        origin = request.headers.get("origin")
+        if origin:
+            # Allow ALL origins dynamically
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+        
+        return response
 
 def get_cors_origins():
-    """Get CORS origins configuration"""
-    cors_origins = [
-        "http://localhost:3000", 
-        "http://127.0.0.1:3000",
-        "http://localhost:3001", 
-        "http://127.0.0.1:3001",
-        "http://localhost:8501", 
-        "http://127.0.0.1:8501",
-        "https://art-app-backend.railway.app",
-        "https://art-app.railway.internal",
-        "https://art-app.railway.app",
-        # Add wildcard for any Railway domain
-        "https://*.railway.app",
-        # Add all known Vercel domains
-        "https://art-app-rosy.vercel.app",
-        "https://art-oxd1cyyg6-darbyrushs-projects.vercel.app",
-        "https://art-our6lxwlw-darbyrushs-projects.vercel.app",
-        "https://art-cz49xzb9h-darbyrushs-projects.vercel.app",
-        "https://art-bey5mvj3s-darbyrushs-projects.vercel.app",
-        "https://art-app.vercel.app",
-        "https://art-explorer.vercel.app",
-        "https://art-gallery.vercel.app",
-        # Add wildcard for any Vercel domain
-        "https://*.vercel.app"
-    ]
-    
-    # Add production origins from environment variable
-    import os
-    if os.getenv("CORS_ORIGINS"):
-        cors_origins.extend(os.getenv("CORS_ORIGINS").split(","))
-    
-    return cors_origins 
+    """Get CORS origins configuration - now allows all origins"""
+    return ["*"]  # Allow all origins 
