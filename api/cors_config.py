@@ -16,6 +16,7 @@ def get_cors_origins():
         "https://art-oxd1cyyg6-darbyrushs-projects.vercel.app",
         "https://art-our6lxwlw-darbyrushs-projects.vercel.app",
         "https://art-cz49xzb9h-darbyrushs-projects.vercel.app",
+        "https://art-bey5mvj3s-darbyrushs-projects.vercel.app",
         "https://art-app.vercel.app",
         "https://art-explorer.vercel.app",
         "https://art-gallery.vercel.app",
