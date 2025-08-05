@@ -17,6 +17,24 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
         
         return response
 
+import os
+
 def get_cors_origins():
-    """Get CORS origins configuration - now allows all origins"""
-    return ["*"]  # Allow all origins 
+    """Get CORS origins configuration"""
+    # Check for environment variable first
+    cors_origins_env = os.getenv("CORS_ORIGINS")
+    if cors_origins_env:
+        # Split by comma if multiple origins are provided
+        return [origin.strip() for origin in cors_origins_env.split(",")]
+    
+    # Default origins
+    return [
+        "http://localhost:3000",
+        "http://localhost:5173", 
+        "http://localhost:8080",
+        "https://art-6y598lbos-darbyrushs-projects.vercel.app",
+        "https://art-app-production.up.railway.app",
+        "https://*.vercel.app",
+        "https://*.railway.app",
+        "*"  # Fallback for development
+    ] 

@@ -1,6 +1,8 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -40,15 +42,67 @@ app = FastAPI(title="Art Explorer API", version="1.0.0")
 # Import CORS configuration
 from api.cors_config import get_cors_origins, DynamicCORSMiddleware
 
-# Add CORS middleware - Railway deployment test
+# Add CORS middleware with proper configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
-app.add_middleware(DynamicCORSMiddleware)
+
+# Global exception handlers to ensure CORS headers are set
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions with CORS headers"""
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Access-Control-Allow-Methods"] = "*"
+        headers["Access-Control-Allow-Headers"] = "*"
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=headers
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle validation errors with CORS headers"""
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Access-Control-Allow-Methods"] = "*"
+        headers["Access-Control-Allow-Headers"] = "*"
+    
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+        headers=headers
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Handle general exceptions with CORS headers"""
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Access-Control-Allow-Methods"] = "*"
+        headers["Access-Control-Allow-Headers"] = "*"
+    
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+        headers=headers
+    )
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -60,7 +114,23 @@ user_service = UserService()
 @app.post("/register", response_model=UserResponse)
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
-    return user_service.create_user(db, user)
+    try:
+        return user_service.create_user(db, user)
+    except ValueError as e:
+        # Handle validation errors
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        # Log the error for debugging
+        import logging
+        logging.error(f"Registration error: {str(e)}")
+        print(f"Registration error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
+        )
 
 @app.post("/create-test-user", response_model=UserResponse)
 def create_test_user(db: Session = Depends(get_db)):
@@ -295,7 +365,25 @@ def test_endpoint():
     return {
         "message": "API is working!",
         "cors": "enabled",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
+        "allowed_origins": get_cors_origins()
+    }
+
+@app.options("/test")
+def test_options():
+    """CORS preflight test endpoint"""
+    return {"message": "CORS preflight successful"}
+
+@app.get("/cors-debug")
+def cors_debug(request: Request):
+    """Debug CORS configuration"""
+    origin = request.headers.get("origin")
+    return {
+        "origin": origin,
+        "allowed_origins": get_cors_origins(),
+        "user_agent": request.headers.get("user-agent"),
+        "method": request.method,
+        "url": str(request.url)
     }
 
 @app.get("/placeholder/{source}.jpg")
