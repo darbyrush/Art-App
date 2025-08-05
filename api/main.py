@@ -111,6 +111,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 artwork_service = ArtworkService()
 user_service = UserService()
 
+@app.options("/register")
+def register_options():
+    """Handle OPTIONS request for registration endpoint"""
+    return {"message": "Registration endpoint supports POST"}
+
 @app.post("/register", response_model=UserResponse)
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
@@ -157,6 +162,11 @@ def create_test_user(db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error creating test user: {str(e)}"
         )
+
+@app.options("/token")
+def token_options():
+    """Handle OPTIONS request for login endpoint"""
+    return {"message": "Login endpoint supports POST"}
 
 @app.post("/token", response_model=Token)
 def login_for_access_token(
