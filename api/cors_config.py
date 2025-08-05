@@ -1,4 +1,26 @@
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+def is_vercel_domain(origin: str) -> bool:
+    """Check if origin is a Vercel domain"""
+    return origin.startswith("https://") and ".vercel.app" in origin
+
+class DynamicCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        
+        origin = request.headers.get("origin")
+        if origin:
+            # Allow all Vercel domains automatically
+            if is_vercel_domain(origin):
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+                response.headers["Access-Control-Allow-Methods"] = "*"
+                response.headers["Access-Control-Allow-Headers"] = "*"
+        
+        return response
 
 def get_cors_origins():
     """Get CORS origins configuration"""
@@ -10,18 +32,7 @@ def get_cors_origins():
         "http://localhost:8501", 
         "http://127.0.0.1:8501",
         "https://art-app-backend.railway.app",
-        "https://art-app.railway.internal",
-        # Add all known Vercel domains
-        "https://art-app-rosy.vercel.app",
-        "https://art-oxd1cyyg6-darbyrushs-projects.vercel.app",
-        "https://art-our6lxwlw-darbyrushs-projects.vercel.app",
-        "https://art-cz49xzb9h-darbyrushs-projects.vercel.app",
-        "https://art-bey5mvj3s-darbyrushs-projects.vercel.app",
-        "https://art-app.vercel.app",
-        "https://art-explorer.vercel.app",
-        "https://art-gallery.vercel.app",
-        # Add wildcard for any Vercel domain
-        "https://*.vercel.app"
+        "https://art-app.railway.internal"
     ]
     
     # Add production origins from environment variable
