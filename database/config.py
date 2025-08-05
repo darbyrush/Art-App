@@ -9,8 +9,15 @@ load_dotenv()
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://darbyrush@localhost/art_explorer")
 
+# Debug database URL (without password for security)
+if DATABASE_URL:
+    debug_url = DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else DATABASE_URL
+    print(f"Database URL: {debug_url}")
+else:
+    print("Warning: DATABASE_URL environment variable not found")
+
 # Handle Railway's PostgreSQL URL format
-if DATABASE_URL.startswith("postgres://"):
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # Create engine with better error handling
@@ -44,4 +51,11 @@ def init_db():
         print("Database tables created successfully")
     except Exception as e:
         print(f"Error initializing database: {e}")
-        raise 
+        print(f"Database URL available: {bool(DATABASE_URL)}")
+        if DATABASE_URL:
+            print(f"Database URL format: {DATABASE_URL[:20]}...")
+        # Don't raise the error in production, just log it
+        if os.getenv("ENVIRONMENT") == "production":
+            print("Continuing without database initialization in production")
+        else:
+            raise 
