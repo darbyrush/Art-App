@@ -7,11 +7,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Database configuration - try multiple Railway environment variables
+# For Railway deployment, use the provided PostgreSQL URL
+RAILWAY_DB_URL = "postgresql://postgres:VPzlvfYNNmRSpxWukjeUIuGDsSFHwKOc@postgres.railway.internal:5432/railway"
+
 DATABASE_URL = (
     os.getenv("DATABASE_URL") or 
     os.getenv("POSTGRES_URL") or 
     os.getenv("RAILWAY_DATABASE_URL") or 
-    "postgresql://postgres:VPzlvfYNNmRSpxWukjeUIuGDsSFHwKOc@postgres.railway.internal:5432/railway" or
+    RAILWAY_DB_URL or
     "postgresql://darbyrush@localhost/art_explorer"
 )
 
