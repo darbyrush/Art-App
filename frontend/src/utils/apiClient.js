@@ -56,7 +56,7 @@ export const apiClient = {
 
   async register(username, password, email = null) {
     const data = { username, password }
-    if (email) data.email = email
+    if (email && email.trim() !== '') data.email = email
     
     const response = await api.post('/register', data)
     return response.data
