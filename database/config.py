@@ -11,6 +11,7 @@ DATABASE_URL = (
     os.getenv("DATABASE_URL") or 
     os.getenv("POSTGRES_URL") or 
     os.getenv("RAILWAY_DATABASE_URL") or 
+    "postgresql://postgres:VPzlvfYNNmRSpxWukjeUIuGDsSFHwKOc@postgres.railway.internal:5432/railway" or
     "postgresql://darbyrush@localhost/art_explorer"
 )
 
