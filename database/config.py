@@ -64,7 +64,5 @@ def init_db():
         if DATABASE_URL:
             print(f"Database URL format: {DATABASE_URL[:20]}...")
         # Don't raise the error in production, just log it
-        if os.getenv("ENVIRONMENT") == "production":
-            print("Continuing without database initialization in production")
-        else:
-            raise 
+        print("Continuing without database initialization - Railway PostgreSQL not configured")
+        print("To fix: Add PostgreSQL service to Railway project") 

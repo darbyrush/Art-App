@@ -289,6 +289,15 @@ def health_check():
             "timestamp": datetime.utcnow()
         }
 
+@app.get("/test")
+def test_endpoint():
+    """Simple test endpoint that doesn't require database"""
+    return {
+        "message": "API is working!",
+        "cors": "enabled",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
 @app.get("/placeholder/{source}.jpg")
 def get_placeholder_image(source: str):
     """Generate a placeholder image for missing artwork images"""
