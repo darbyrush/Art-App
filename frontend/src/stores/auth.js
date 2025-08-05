@@ -45,10 +45,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  const register = async (username, password, email) => {
+  const register = async (username, password) => {
     loading.value = true
     try {
-      const response = await apiClient.register(username, password, email)
+      const response = await apiClient.register(username, password)
       if (response.id) {
         // Auto-login after registration
         return await login(username, password)

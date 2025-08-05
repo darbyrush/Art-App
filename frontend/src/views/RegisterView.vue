@@ -30,18 +30,7 @@
             >
           </div>
 
-          <div>
-            <label for="email" class="block text-sm font-medium text-gray-700">
-              Email (optional)
-            </label>
-            <input
-              id="email"
-              v-model="form.email"
-              type="email"
-              class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-              placeholder="Enter your email"
-            >
-          </div>
+
 
           <div>
             <label for="password" class="block text-sm font-medium text-gray-700">
@@ -111,7 +100,6 @@ const authStore = useAuthStore()
 
 const form = ref({
   username: '',
-  email: '',
   password: '',
   confirmPassword: ''
 })
@@ -129,7 +117,7 @@ const handleRegister = async () => {
   }
   
   try {
-    const result = await authStore.register(form.value.username, form.value.password, form.value.email)
+    const result = await authStore.register(form.value.username, form.value.password)
     if (result.success) {
       router.push('/')
     } else {
