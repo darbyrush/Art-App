@@ -26,19 +26,15 @@
     <main class="max-w-2xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
       <!-- Loading State -->
       <div v-if="loading && artworks.length === 0" class="text-center py-8 sm:py-12">
-        <div class="relative">
-          <div class="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-4 border-gray-200 border-t-primary-600 mx-auto"></div>
-          <div class="absolute inset-0 animate-ping rounded-full h-12 w-12 sm:h-16 sm:w-16 border-2 border-primary-400 mx-auto opacity-75"></div>
-        </div>
-        <p class="mt-4 sm:mt-6 text-sm sm:text-base text-gray-600">Discovering amazing artworks...</p>
-        <div class="mt-2 text-xs text-gray-500">Preloading images for the best experience</div>
+        <div class="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-2 border-primary-600 mx-auto"></div>
+        <p class="mt-2 sm:mt-4 text-sm sm:text-base text-gray-600">Loading artworks...</p>
       </div>
 
       <!-- Empty State -->
-      <div v-else-if="artworks.length === 0 && !loading && !isLoadingMore" class="text-center py-8 sm:py-12">
+      <div v-else-if="artworks.length === 0 && !loading" class="text-center py-8 sm:py-12">
         <div class="text-4xl sm:text-6xl mb-4">🎨</div>
         <h2 class="text-xl sm:text-2xl font-serif font-bold mb-2">Welcome to the Exhibit!</h2>
-        <p class="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 px-4">Ready to discover amazing artworks? Click below to start exploring!</p>
+        <p class="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 px-4">Ready to discover amazing artworks? Scroll down to start exploring!</p>
         <button @click="loadMoreArtworks" class="btn-primary text-sm sm:text-base px-4 py-2">
           🎲 Start Exploring
         </button>
@@ -47,10 +43,9 @@
       <!-- Instagram-style Feed -->
       <div v-else class="instagram-feed">
         <div
-          v-for="artwork in displayedArtworks"
+          v-for="artwork in artworks"
           :key="`${artwork.id}-${artwork.updated_at || Date.now()}`"
           class="instagram-post bg-white rounded-lg shadow-sm border border-gray-200 mb-4 sm:mb-6"
-          :data-artwork-id="artwork.id"
         >
           <!-- Post Header -->
           <div class="post-header flex items-center justify-between p-3 sm:p-4 border-b border-gray-200">
@@ -60,45 +55,15 @@
 
           <!-- Post Image Container -->
           <div class="post-image-container relative">
-            <!-- Image Loading State -->
-            <div v-if="!artwork.imageLoaded && !artwork.imageFailed" class="w-full h-64 sm:h-96 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-              <div class="text-center">
-                <div class="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-primary-600 mx-auto"></div>
-                <p class="mt-2 text-xs text-gray-500">Loading image...</p>
-                <p class="text-xs text-gray-400 mt-1">{{ artwork.title }}</p>
-              </div>
-            </div>
-            <!-- Failed Image State -->
-            <div v-if="artwork.imageFailed" class="w-full h-64 sm:h-96 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-              <div class="text-center">
-                <div class="text-4xl mb-2">🎨</div>
-                <p class="text-xs text-gray-500">{{ artwork.title }}</p>
-                <p class="text-xs text-gray-400">by {{ artwork.artist }}</p>
-              </div>
-            </div>
-            <!-- Successfully Loaded Image -->
             <img
-              v-if="artwork.imageLoaded"
               :src="getOptimizedImageUrl(artwork.image_url, 'feed')"
               :alt="artwork.title"
               class="w-full h-64 sm:h-96 object-cover"
               @dblclick="likeArtwork(artwork)"
               @error="handleImageError"
               :data-source="artwork.source"
-              @load="handleImageLoad(artwork)"
-              @loadstart="handleImageStartLoad(artwork)"
-            >
-            <!-- Image that hasn't loaded yet -->
-            <img
-              v-if="!artwork.imageLoaded && !artwork.imageFailed"
-              :src="getOptimizedImageUrl(artwork.image_url, 'feed')"
-              :alt="artwork.title"
-              class="w-full h-64 sm:h-96 object-cover opacity-0"
-              @dblclick="likeArtwork(artwork)"
-              @error="handleImageError"
-              :data-source="artwork.source"
-              @load="handleImageLoad(artwork)"
-              @loadstart="handleImageStartLoad(artwork)"
+              @load="handleImageLoad"
+              @loadstart="handleImageStartLoad"
             >
             <!-- Double-tap overlay -->
             <div
@@ -211,7 +176,6 @@ const selectedSources = ref(['all'])
 const sortBy = ref('random')
 const imageLoading = ref({})
 const isLoadingMore = ref(false)
-const loadingTimeout = ref(null) // For debouncing load requests
 
 // Modal state
 const showRatingModal = ref(false)
@@ -225,23 +189,12 @@ let observer = null
 // Computed properties
 const availableSources = computed(() => artworkStore.availableSources)
 
-// Show all artworks, but handle image loading states in the template
-const displayedArtworks = computed(() => {
-  return artworks.value
-})
-
 // Methods
 const loadMoreArtworks = async () => {
   if (loading.value || isLoadingMore.value || !hasMore.value) return
   
   try {
-    // Set loading state based on whether this is initial load or loading more
-    if (artworks.value.length === 0) {
-      loading.value = true
-    } else {
-      isLoadingMore.value = true
-    }
-    
+    isLoadingMore.value = true
     const newArtworks = await artworkStore.getGalleryArtworks({
       page: page.value,
       sources: selectedSources.value,
@@ -254,16 +207,7 @@ const loadMoreArtworks = async () => {
       const uniqueNewArtworks = newArtworks.filter(artwork => !existingIds.has(artwork.id))
       
       if (uniqueNewArtworks.length > 0) {
-        // Initialize image properties for each artwork
-        uniqueNewArtworks.forEach(artwork => {
-          artwork.imageLoaded = false
-          artwork.imageFailed = false
-        })
         artworks.value.push(...uniqueNewArtworks)
-        
-        // Preload images for better user experience
-        preloadImages(uniqueNewArtworks)
-        
         page.value++
       } else {
         // If all artworks are duplicates, try next page
@@ -314,59 +258,22 @@ const submitRating = async () => {
 }
 
 const handleImageError = (event) => {
-  // Find the artwork that this image belongs to
-  const artworkId = event.target.closest('.instagram-post')?.dataset?.artworkId
-  const artwork = artworks.value.find(a => a.id === artworkId)
-  
-  if (artwork) {
-    // Add a small delay before marking as failed to allow for retry
-    setTimeout(() => {
-      if (artwork && !artwork.imageLoaded) {
-        artwork.imageFailed = true
-        artwork.imageLoaded = false
-      }
-    }, 2000) // 2 second delay before marking as failed
+  const fallbackUrl = getFallbackImageUrl(event.target.dataset.source)
+  if (event.target.src !== fallbackUrl) {
+    event.target.src = fallbackUrl
   }
 }
 
-const handleImageLoad = (artwork) => {
-  artwork.imageLoaded = true
+const handleImageLoad = (event) => {
+  const source = event.target.dataset.source
+  if (imageLoading.value[source]) {
+    imageLoading.value[source] = false
+  }
 }
 
-const handleImageStartLoad = (artwork) => {
-  artwork.imageLoaded = false
-  
-  // Set a timeout to prevent images from being stuck in loading state
-  setTimeout(() => {
-    if (artwork && !artwork.imageLoaded && !artwork.imageFailed) {
-      artwork.imageFailed = true
-      artwork.imageLoaded = false
-    }
-  }, 10000) // 10 second timeout
-}
-
-// Preload images for better user experience
-const preloadImages = (artworksToPreload) => {
-  artworksToPreload.forEach(artwork => {
-    // Only preload if not already loading or loaded
-    if (!artwork.imageLoaded && !artwork.imageFailed) {
-      const img = new Image()
-      img.onload = () => {
-        // Only set if not already set by natural loading
-        if (!artwork.imageLoaded && !artwork.imageFailed) {
-          artwork.imageLoaded = true
-        }
-      }
-      img.onerror = () => {
-        // Only set if not already set by natural loading
-        if (!artwork.imageLoaded && !artwork.imageFailed) {
-          artwork.imageFailed = true
-          artwork.imageLoaded = false
-        }
-      }
-      img.src = getOptimizedImageUrl(artwork.image_url, 'feed')
-    }
-  })
+const handleImageStartLoad = (event) => {
+  const source = event.target.dataset.source
+  imageLoading.value[source] = true
 }
 
 const resetExhibit = () => {
@@ -406,23 +313,13 @@ const setupIntersectionObserver = () => {
     (entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting && hasMore.value && !loading.value && !isLoadingMore.value) {
-          // Clear any existing timeout
-          if (loadingTimeout.value) {
-            clearTimeout(loadingTimeout.value)
-          }
-          
-          // Add a debounced delay to allow current images to load
-          loadingTimeout.value = setTimeout(() => {
-            if (hasMore.value && !loading.value && !isLoadingMore.value) {
-              loadMoreArtworks()
-            }
-          }, 1500) // 1.5 second delay
+          loadMoreArtworks()
         }
       })
     },
     { 
       threshold: 0.1,
-      rootMargin: '300px' // Increased margin to start loading earlier
+      rootMargin: '100px' // Start loading before reaching the trigger
     }
   )
   
@@ -460,17 +357,11 @@ onBeforeUnmount(() => {
   if (observer) {
     observer.disconnect()
   }
-  if (loadingTimeout.value) {
-    clearTimeout(loadingTimeout.value)
-  }
 })
 
 onUnmounted(() => {
   if (observer) {
     observer.disconnect()
-  }
-  if (loadingTimeout.value) {
-    clearTimeout(loadingTimeout.value)
   }
 })
 </script>

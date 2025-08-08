@@ -127,3 +127,4 @@ class ImageCacheService:
 
 # Global instance
 image_cache_service = ImageCacheService()
+
