@@ -21,7 +21,7 @@ export const IMAGE_STATES = {
 }
 
 // API base URL
-const API_BASE_URL = 'http://localhost:8001'
+const API_BASE_URL = 'http://localhost:8000'
 
 // Image validation cache
 const imageValidationCache = new Map()

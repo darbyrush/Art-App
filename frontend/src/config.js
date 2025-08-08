@@ -1,5 +1,5 @@
 // API Configuration
-export const API_BASE_URL = 'http://localhost:8001'
+export const API_BASE_URL = 'http://localhost:8000'
 
 // Frontend Configuration
 export const FRONTEND_URL = 'http://localhost:3000'

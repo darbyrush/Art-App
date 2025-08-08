@@ -4,6 +4,13 @@
 # User data
 users.json
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+art_explorer.db
+art_api_cache.sqlite
+
 # Python
 __pycache__/
 *.pyc

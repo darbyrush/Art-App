@@ -22,7 +22,7 @@ FRONTEND_PID=$!
 
 echo "✅ Application started!"
 echo "Backend: http://localhost:8000"
-echo "Frontend: http://localhost:5173"
+echo "Frontend: http://localhost:3000"
 echo "API Docs: http://localhost:8000/docs"
 echo ""
 echo "Press Ctrl+C to stop both servers"
