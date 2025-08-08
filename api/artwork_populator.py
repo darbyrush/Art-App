@@ -16,7 +16,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.config import SessionLocal
-from database.models import Artwork, APICache
+from database.models import Artwork
 from backend.services.fetchers.random_art import fetch_artworks_from_sources
 from backend.registry import SOURCES
 

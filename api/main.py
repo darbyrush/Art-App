@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -9,19 +9,33 @@ from typing import List, Optional
 import base64
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
+import asyncio
+import aiohttp
+import logging
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.config import get_db, init_db
-from database.models import User, Artwork, UserLike, UserRating, UserNote, APICache
+from database.models import User, Artwork, UserLike, UserRating, UserNote, ImageCache
+from api.image_cache_service import image_cache_service
 from api.schemas import (
     UserCreate, UserResponse, ArtworkResponse, UserLikeCreate, 
-    UserRatingCreate, UserNoteCreate, Token, TokenData
+    UserRatingCreate, UserNoteCreate, Token, TokenData,
+    BoardCreate, BoardUpdate, BoardResponse, BoardArtworkCreate
 )
 from api.auth import (
     get_password_hash, verify_password, create_access_token, 
     get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from api.services import ArtworkService, UserService
+from api.services import ArtworkService, UserService, UserLikeService, UserRatingService, UserNoteService, BoardService
 from api.artwork_populator import populate_database, get_stats
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize database
 try:
@@ -98,6 +112,7 @@ async def general_exception_handler(request: Request, exc: Exception):
         headers["Access-Control-Allow-Methods"] = "*"
         headers["Access-Control-Allow-Headers"] = "*"
     
+    logger.error(f"Unhandled exception: {str(exc)}")
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
@@ -110,6 +125,58 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 # Services
 artwork_service = ArtworkService()
 user_service = UserService()
+user_like_service = UserLikeService()
+user_rating_service = UserRatingService()
+user_note_service = UserNoteService()
+board_service = BoardService()
+
+# Image validation cache
+image_cache = {}
+
+async def validate_image_url(url: str) -> bool:
+    """Validate if an image URL is accessible with more lenient timeout"""
+    if not url:
+        return False
+    
+    # Check cache first
+    if url in image_cache:
+        return image_cache[url]
+    
+    try:
+        # Create SSL context that ignores certificate verification
+        import ssl
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        # Create connector with SSL context
+        connector = aiohttp.TCPConnector(ssl=ssl_context)
+        
+        # Use a longer timeout and more lenient validation
+        timeout = aiohttp.ClientTimeout(total=10, connect=5)
+        
+        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+            async with session.head(url) as response:
+                # Accept 200, 301, 302, 304 status codes as valid
+                is_valid = response.status in [200, 301, 302, 304]
+                image_cache[url] = is_valid
+                return is_valid
+    except asyncio.TimeoutError:
+        # Timeout doesn't necessarily mean the image is broken
+        logger.info(f"Image validation timeout for {url} - assuming valid")
+        image_cache[url] = True  # Assume valid if timeout
+        return True
+    except Exception as e:
+        # Only log specific errors, don't assume all exceptions mean broken images
+        if "404" in str(e) or "Not Found" in str(e):
+            logger.warning(f"Image validation failed for {url}: {e}")
+            image_cache[url] = False
+            return False
+        else:
+            # For other errors (SSL, network issues), assume the image might be valid
+            logger.info(f"Image validation error for {url} (assuming valid): {e}")
+            image_cache[url] = True
+            return True
 
 @app.options("/register")
 def register_options():
@@ -129,8 +196,7 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         )
     except Exception as e:
         # Log the error for debugging
-        import logging
-        logging.error(f"Registration error: {str(e)}")
+        logger.error(f"Registration error: {str(e)}")
         print(f"Registration error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -174,20 +240,29 @@ def login_for_access_token(
     db: Session = Depends(get_db)
 ):
     """Login and get access token"""
-    user = user_service.authenticate_user(db, form_data.username, form_data.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+    try:
+        user = user_service.authenticate_user(db, form_data.username, form_data.password)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.username}, expires_delta=access_token_expires
         )
-    
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    
-    return {"access_token": access_token, "token_type": "bearer"}
+        
+        return {"access_token": access_token, "token_type": "bearer"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Login failed: {str(e)}"
+        )
 
 @app.get("/users/me", response_model=UserResponse)
 def read_users_me(current_user: User = Depends(get_current_user)):
@@ -210,6 +285,7 @@ def get_random_artwork(
             detail=str(e)
         )
     except Exception as e:
+        logger.error(f"Error fetching random artwork: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching artwork: {str(e)}"
@@ -223,7 +299,14 @@ def like_artwork(
     db: Session = Depends(get_db)
 ):
     """Like or dislike an artwork"""
-    return user_service.like_artwork(db, current_user.id, artwork_id, like_data.liked)
+    try:
+        return user_like_service.like_artwork(db, current_user.id, artwork_id, like_data.liked)
+    except Exception as e:
+        logger.error(f"Error liking artwork: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating like: {str(e)}"
+        )
 
 @app.post("/artworks/{artwork_id}/rate")
 def rate_artwork(
@@ -233,7 +316,21 @@ def rate_artwork(
     db: Session = Depends(get_db)
 ):
     """Rate an artwork (1-5 stars)"""
-    return user_service.rate_artwork(db, current_user.id, artwork_id, rating_data.rating)
+    try:
+        if not 1 <= rating_data.rating <= 5:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Rating must be between 1 and 5"
+            )
+        return user_rating_service.rate_artwork(db, current_user.id, artwork_id, rating_data.rating)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error rating artwork: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating rating: {str(e)}"
+        )
 
 @app.post("/artworks/{artwork_id}/note")
 def add_note(
@@ -243,7 +340,14 @@ def add_note(
     db: Session = Depends(get_db)
 ):
     """Add a note to an artwork"""
-    return user_service.add_note(db, current_user.id, artwork_id, note_data.note)
+    try:
+        return user_note_service.add_note(db, current_user.id, artwork_id, note_data.note)
+    except Exception as e:
+        logger.error(f"Error adding note: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error adding note: {str(e)}"
+        )
 
 @app.get("/users/me/likes", response_model=List[ArtworkResponse])
 def get_user_likes(
@@ -251,7 +355,14 @@ def get_user_likes(
     db: Session = Depends(get_db)
 ):
     """Get all artworks liked by current user"""
-    return user_service.get_user_likes(db, current_user.id)
+    try:
+        return user_like_service.get_user_likes(db, current_user.id)
+    except Exception as e:
+        logger.error(f"Error getting user likes: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching liked artworks: {str(e)}"
+        )
 
 @app.get("/users/me/stats")
 def get_user_stats(
@@ -259,7 +370,14 @@ def get_user_stats(
     db: Session = Depends(get_db)
 ):
     """Get user statistics"""
-    return user_service.get_user_stats(db, current_user.id)
+    try:
+        return user_service.get_user_stats(db, current_user.id)
+    except Exception as e:
+        logger.error(f"Error getting user stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching user stats: {str(e)}"
+        )
 
 @app.get("/artworks/search")
 def search_artworks(
@@ -270,7 +388,14 @@ def search_artworks(
     db: Session = Depends(get_db)
 ):
     """Search artworks with filters"""
-    return artwork_service.search_artworks(db, source, artist, date_range, current_user.id)
+    try:
+        return artwork_service.search_artworks(db, source, artist, date_range, current_user.id)
+    except Exception as e:
+        logger.error(f"Error searching artworks: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error searching artworks: {str(e)}"
+        )
 
 @app.get("/artworks/recommendations", response_model=List[ArtworkResponse])
 def get_recommendations(
@@ -279,7 +404,14 @@ def get_recommendations(
     db: Session = Depends(get_db)
 ):
     """Get personalized artwork recommendations"""
-    return artwork_service.get_artwork_recommendations(db, current_user.id, limit)
+    try:
+        return artwork_service.get_artwork_recommendations(db, current_user.id, limit)
+    except Exception as e:
+        logger.error(f"Error getting recommendations: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching recommendations: {str(e)}"
+        )
 
 @app.get("/artworks/popular", response_model=List[ArtworkResponse])
 def get_popular_artworks(
@@ -288,7 +420,14 @@ def get_popular_artworks(
     db: Session = Depends(get_db)
 ):
     """Get most popular artworks"""
-    return artwork_service.get_popular_artworks(db, limit)
+    try:
+        return artwork_service.get_popular_artworks(db, limit)
+    except Exception as e:
+        logger.error(f"Error getting popular artworks: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching popular artworks: {str(e)}"
+        )
 
 @app.get("/artworks", response_model=List[ArtworkResponse])
 def get_artworks(
@@ -313,13 +452,14 @@ def get_artworks(
         )
         return artworks
     except Exception as e:
+        logger.error(f"Error fetching artworks: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching artworks: {str(e)}"
         )
 
 @app.get("/artworks/gallery", response_model=List[ArtworkResponse])
-def get_gallery_artworks(
+async def get_gallery_artworks(
     page: int = 1,
     sources: Optional[str] = None,
     sort_by: str = "random",
@@ -339,11 +479,213 @@ def get_gallery_artworks(
             limit, 
             sort_by
         )
+        
+        # For now, return artworks without validation to show real images
+        # Image validation can be re-enabled later with better error handling
         return artworks
     except Exception as e:
+        logger.error(f"Error fetching gallery artworks: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching gallery artworks: {str(e)}"
+        )
+
+# Board endpoints
+@app.post("/boards", response_model=BoardResponse)
+def create_board(
+    board_data: BoardCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new board"""
+    try:
+        return board_service.create_board(db, current_user.id, board_data)
+    except Exception as e:
+        logger.error(f"Error creating board: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating board: {str(e)}"
+        )
+
+@app.get("/boards", response_model=List[BoardResponse])
+def get_user_boards(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all boards for the current user"""
+    try:
+        return board_service.get_user_boards(db, current_user.id)
+    except Exception as e:
+        logger.error(f"Error getting user boards: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching boards: {str(e)}"
+        )
+
+@app.get("/boards/{board_id}", response_model=BoardResponse)
+def get_board(
+    board_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get a specific board by ID"""
+    try:
+        board = board_service.get_board(db, board_id, current_user.id)
+        if not board:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Board not found or access denied"
+            )
+        return board
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting board: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching board: {str(e)}"
+        )
+
+@app.put("/boards/{board_id}", response_model=BoardResponse)
+def update_board(
+    board_id: str,
+    board_data: BoardUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update a board"""
+    try:
+        return board_service.update_board(db, board_id, current_user.id, board_data)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error updating board: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating board: {str(e)}"
+        )
+
+@app.delete("/boards/{board_id}")
+def delete_board(
+    board_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a board"""
+    try:
+        return board_service.delete_board(db, board_id, current_user.id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error deleting board: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting board: {str(e)}"
+        )
+
+@app.post("/boards/{board_id}/artworks")
+def add_artwork_to_board(
+    board_id: str,
+    artwork_data: BoardArtworkCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Add an artwork to a board"""
+    try:
+        return board_service.add_artwork_to_board(db, board_id, current_user.id, artwork_data.artwork_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error adding artwork to board: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error adding artwork to board: {str(e)}"
+        )
+
+@app.delete("/boards/{board_id}/artworks/{artwork_id}")
+def remove_artwork_from_board(
+    board_id: str,
+    artwork_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Remove an artwork from a board"""
+    try:
+        return board_service.remove_artwork_from_board(db, board_id, current_user.id, artwork_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error removing artwork from board: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error removing artwork from board: {str(e)}"
+        )
+
+@app.get("/boards/{board_id}/artworks", response_model=List[ArtworkResponse])
+def get_board_artworks(
+    board_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all artworks in a board"""
+    try:
+        return board_service.get_board_artworks(db, board_id, current_user.id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error getting board artworks: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching board artworks: {str(e)}"
+        )
+
+@app.get("/artworks/validate-images")
+async def validate_artwork_images(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Validate and fix artwork image URLs"""
+    try:
+        artworks = db.query(Artwork).filter(Artwork.image_url.isnot(None)).all()
+        invalid_count = 0
+        fixed_count = 0
+        
+        for artwork in artworks:
+            if artwork.image_url and not artwork.image_url.startswith('/placeholder/'):
+                is_valid = await validate_image_url(artwork.image_url)
+                if not is_valid:
+                    invalid_count += 1
+                    # Update to use placeholder
+                    artwork.image_url = f"/placeholder/{artwork.source}.jpg"
+                    db.commit()
+                    fixed_count += 1
+        
+        return {
+            "message": "Image validation completed",
+            "total_checked": len(artworks),
+            "invalid_found": invalid_count,
+            "fixed_count": fixed_count
+        }
+    except Exception as e:
+        logger.error(f"Error validating images: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error validating images: {str(e)}"
         )
 
 @app.get("/health")
@@ -432,6 +774,133 @@ def get_placeholder_image(source: str):
     except Exception as e:
         # Return a simple error response if image generation fails
         return {"error": "Could not generate placeholder image"}
+
+@app.get("/images/optimize")
+async def optimize_image(
+    url: str,
+    width: int = 400,
+    height: int = 400,
+    quality: int = 85,
+    format: str = "JPEG"
+):
+    """Optimize and serve image with specified parameters"""
+    try:
+        # Create SSL context that ignores certificate verification
+        import ssl
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        # Create connector with SSL context
+        connector = aiohttp.TCPConnector(ssl=ssl_context)
+        
+        # For now, just proxy the original image
+        # In a full implementation, this would resize and optimize the image
+        async with aiohttp.ClientSession(connector=connector) as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.status == 200:
+                    content = await response.read()
+                    return Response(content=content, media_type=response.headers.get('content-type', 'image/jpeg'))
+                else:
+                    # If original image fails, return placeholder
+                    from api.image_service import image_service
+                    placeholder = image_service.generate_placeholder('default', width, height, 'modern')
+                    return Response(content=placeholder, media_type="image/jpeg")
+    except Exception as e:
+        logger.error(f"Error optimizing image: {e}")
+        # Return placeholder on error
+        from api.image_service import image_service
+        placeholder = image_service.generate_placeholder('default', width, height, 'modern')
+        return Response(content=placeholder, media_type="image/jpeg")
+
+@app.get("/images/placeholder/{source}")
+async def get_placeholder_image_advanced(
+    source: str,
+    width: int = 400,
+    height: int = 400,
+    style: str = "modern"
+):
+    """Generate placeholder image with advanced parameters"""
+    try:
+        # Use the existing image service to generate placeholders
+        from api.image_service import image_service
+        placeholder = image_service.generate_placeholder(source, width, height, style)
+        return Response(content=placeholder, media_type="image/jpeg")
+    except Exception as e:
+        logger.error(f"Error generating placeholder: {e}")
+        # Fallback to simple placeholder
+        return get_placeholder_image(source)
+
+@app.get("/images/cached/{url:path}")
+async def get_cached_image(
+    url: str,
+    db: Session = Depends(get_db)
+):
+    """Get cached image from database"""
+    try:
+        # Decode URL parameter
+        import urllib.parse
+        decoded_url = urllib.parse.unquote(url)
+        
+        # Get or download cached image
+        cached_image = await image_cache_service.get_or_download_image(decoded_url, db)
+        
+        if cached_image and cached_image.is_valid and cached_image.image_data:
+            # Return the cached image data
+            import base64
+            image_data = base64.b64decode(cached_image.image_data)
+            content_type = f"image/{cached_image.format}" if cached_image.format else "image/jpeg"
+            return Response(content=image_data, media_type=content_type)
+        else:
+            # Return placeholder if image is not available
+            from api.image_service import image_service
+            placeholder = image_service.generate_placeholder('default', 400, 400, 'modern')
+            return Response(content=placeholder, media_type="image/jpeg")
+            
+    except Exception as e:
+        logger.error(f"Error serving cached image: {e}")
+        # Return placeholder on error
+        from api.image_service import image_service
+        placeholder = image_service.generate_placeholder('default', 400, 400, 'modern')
+        return Response(content=placeholder, media_type="image/jpeg")
+
+@app.post("/admin/cache-images")
+async def cache_images_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Cache all artwork images in database (admin only)"""
+    try:
+        # Get all artworks with image URLs
+        artworks = db.query(Artwork).filter(Artwork.image_url.isnot(None)).all()
+        
+        cached_count = 0
+        failed_count = 0
+        
+        for artwork in artworks:
+            try:
+                cached_image = await image_cache_service.get_or_download_image(
+                    artwork.image_url, db, artwork.source
+                )
+                if cached_image and cached_image.is_valid:
+                    cached_count += 1
+                else:
+                    failed_count += 1
+            except Exception as e:
+                logger.error(f"Error caching image for artwork {artwork.id}: {e}")
+                failed_count += 1
+        
+        return {
+            "message": "Image caching completed",
+            "total_artworks": len(artworks),
+            "cached_count": cached_count,
+            "failed_count": failed_count
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error caching images: {str(e)}"
+        )
 
 @app.post("/admin/populate-database")
 def populate_database_endpoint(

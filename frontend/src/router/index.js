@@ -1,41 +1,61 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
+import ExhibitView from '@/views/ExhibitView.vue'
+import GalleryView from '@/views/GalleryView.vue'
+import LoginView from '@/views/LoginView.vue'
+import RegisterView from '@/views/RegisterView.vue'
+import ProfileView from '@/views/ProfileView.vue'
+import BoardsView from '@/views/BoardsView.vue'
+import BoardDetailView from '@/views/BoardDetailView.vue'
+
 const routes = [
   {
     path: '/',
-    name: 'Exhibit',
-    component: () => import('@/views/ExhibitView.vue'),
+    name: 'exhibit',
+    component: ExhibitView,
     meta: { requiresAuth: true }
   },
   {
-    path: '/login',
-    name: 'Login',
-    component: () => import('@/views/LoginView.vue'),
-    meta: { requiresAuth: false }
-  },
-  {
-    path: '/register',
-    name: 'Register',
-    component: () => import('@/views/RegisterView.vue'),
-    meta: { requiresAuth: false }
-  },
-  {
     path: '/gallery',
-    name: 'Gallery',
-    component: () => import('@/views/GalleryView.vue'),
+    name: 'gallery',
+    component: GalleryView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/boards',
+    name: 'boards',
+    component: BoardsView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/boards/:id',
+    name: 'board-detail',
+    component: BoardDetailView,
     meta: { requiresAuth: true }
   },
   {
     path: '/profile',
-    name: 'Profile',
-    component: () => import('@/views/ProfileView.vue'),
+    name: 'profile',
+    component: ProfileView,
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/login',
+    name: 'login',
+    component: LoginView,
+    meta: { requiresGuest: true }
+  },
+  {
+    path: '/register',
+    name: 'register',
+    component: RegisterView,
+    meta: { requiresGuest: true }
   }
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes
 })
 
@@ -43,13 +63,19 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
   
+  // Check if route requires authentication
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
-  } else if (to.path === '/login' && authStore.isAuthenticated) {
-    next('/')
-  } else {
-    next()
+    return
   }
+  
+  // Check if route requires guest (not authenticated)
+  if (to.meta.requiresGuest && authStore.isAuthenticated) {
+    next('/')
+    return
+  }
+  
+  next()
 })
 
 export default router 

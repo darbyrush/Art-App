@@ -1,324 +1,404 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func, desc
-from typing import List, Optional
-from datetime import datetime, timedelta
-import json
-import random
 import logging
-
-from database.models import User, Artwork, UserLike, UserRating, UserNote, APICache
-from api.schemas import UserCreate, UserResponse, ArtworkResponse, UserStats
+from typing import List, Optional, Dict
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from database.models import User, Artwork, UserLike, UserRating, UserNote, Board, BoardArtwork, ImageCache
+from api.schemas import UserCreate, UserResponse, ArtworkResponse, BoardCreate, BoardUpdate, BoardResponse, BoardArtworkCreate, BoardArtworkResponse
 from api.auth import get_password_hash, verify_password
-from backend.services.fetchers.random_art import fetch_random_artwork, fetch_artworks_from_sources
+from datetime import datetime, timedelta
+import base64
+from io import BytesIO
 
-# Configure logging
 logger = logging.getLogger(__name__)
 
 class UserService:
     def create_user(self, db: Session, user: UserCreate) -> UserResponse:
         """Create a new user"""
-        # Check if username already exists
-        existing_user = db.query(User).filter(User.username == user.username).first()
-        if existing_user:
-            raise ValueError("Username already registered")
-        
-        # Create new user
-        hashed_password = get_password_hash(user.password)
-        db_user = User(
-            username=user.username,
-            email=user.email,
-            hashed_password=hashed_password
-        )
-        
-        db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
-        
-        return UserResponse.model_validate(db_user)
-    
+        try:
+            hashed_password = get_password_hash(user.password)
+            db_user = User(
+                username=user.username,
+                email=user.email,
+                hashed_password=hashed_password
+            )
+            db.add(db_user)
+            db.commit()
+            db.refresh(db_user)
+            return UserResponse.model_validate(db_user)
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error creating user: {e}")
+            raise
+
+    def get_user_by_username(self, db: Session, username: str) -> Optional[User]:
+        """Get user by username"""
+        return db.query(User).filter(User.username == username).first()
+
     def authenticate_user(self, db: Session, username: str, password: str) -> Optional[User]:
-        """Authenticate a user"""
-        user = db.query(User).filter(User.username == username).first()
-        if not user or not verify_password(password, user.hashed_password):
+        """Authenticate user"""
+        user = self.get_user_by_username(db, username)
+        if not user:
+            return None
+        if not verify_password(password, user.hashed_password):
             return None
         return user
-    
-    def like_artwork(self, db: Session, user_id: str, artwork_id: str, liked: bool) -> dict:
-        """Like or dislike an artwork"""
-        # Check if like already exists
-        existing_like = db.query(UserLike).filter(
-            and_(UserLike.user_id == user_id, UserLike.artwork_id == artwork_id)
-        ).first()
+
+class ArtworkService:
+    def get_artworks(self, db: Session, sources: List[str] = None, skip: int = 0, limit: int = 100, sort_by: str = "random") -> List[Artwork]:
+        """Get artworks with pagination, filtering, and sorting"""
+        query = db.query(Artwork)
         
-        if existing_like:
-            existing_like.liked = liked
-            existing_like.created_at = datetime.utcnow()
-        else:
-            new_like = UserLike(
-                user_id=user_id,
-                artwork_id=artwork_id,
-                liked=liked
-            )
-            db.add(new_like)
+        # Apply source filtering if specified
+        if sources and "all" not in sources:
+            query = query.filter(Artwork.source.in_(sources))
         
-        db.commit()
-        return {"message": "Like updated successfully"}
-    
-    def rate_artwork(self, db: Session, user_id: str, artwork_id: str, rating: int) -> dict:
-        """Rate an artwork (1-5 stars)"""
-        if not 1 <= rating <= 5:
-            raise ValueError("Rating must be between 1 and 5")
+        # Apply sorting
+        if sort_by == "random":
+            query = query.order_by(func.random())
+        elif sort_by == "title":
+            query = query.order_by(Artwork.title)
+        elif sort_by == "date":
+            query = query.order_by(Artwork.date)
+        elif sort_by == "artist":
+            query = query.order_by(Artwork.artist)
         
-        # Check if rating already exists
-        existing_rating = db.query(UserRating).filter(
-            and_(UserRating.user_id == user_id, UserRating.artwork_id == artwork_id)
-        ).first()
-        
-        if existing_rating:
-            existing_rating.rating = rating
-            existing_rating.updated_at = datetime.utcnow()
-        else:
-            new_rating = UserRating(
-                user_id=user_id,
-                artwork_id=artwork_id,
-                rating=rating
-            )
-            db.add(new_rating)
-        
-        db.commit()
-        return {"message": "Rating updated successfully"}
-    
-    def add_note(self, db: Session, user_id: str, artwork_id: str, note: str) -> dict:
+        return query.offset(skip).limit(limit).all()
+
+    def get_artwork_by_id(self, db: Session, artwork_id: str) -> Optional[Artwork]:
+        """Get artwork by ID"""
+        return db.query(Artwork).filter(Artwork.id == artwork_id).first()
+
+    def get_random_artwork(self, db: Session, sources: Optional[str] = None) -> Optional[Artwork]:
+        """Get a random artwork"""
+        query = db.query(Artwork)
+        if sources and sources != "all":
+            source_list = sources.split(",")
+            query = query.filter(Artwork.source.in_(source_list))
+        return query.order_by(db.func.random()).first()
+
+class UserLikeService:
+    def like_artwork(self, db: Session, user_id: str, artwork_id: str, liked: bool = True) -> bool:
+        """Like or unlike an artwork"""
+        try:
+            # Check if like already exists
+            existing_like = db.query(UserLike).filter(
+                UserLike.user_id == user_id,
+                UserLike.artwork_id == artwork_id
+            ).first()
+            
+            if existing_like:
+                existing_like.liked = liked
+            else:
+                new_like = UserLike(
+                    user_id=user_id,
+                    artwork_id=artwork_id,
+                    liked=liked
+                )
+                db.add(new_like)
+            
+            db.commit()
+            return True
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error liking artwork: {e}")
+            return False
+
+    def get_user_likes(self, db: Session, user_id: str) -> List[Artwork]:
+        """Get all artworks liked by user"""
+        return db.query(Artwork).join(UserLike).filter(
+            UserLike.user_id == user_id,
+            UserLike.liked == True
+        ).all()
+
+class UserRatingService:
+    def rate_artwork(self, db: Session, user_id: str, artwork_id: str, rating: int) -> bool:
+        """Rate an artwork"""
+        try:
+            # Check if rating already exists
+            existing_rating = db.query(UserRating).filter(
+                UserRating.user_id == user_id,
+                UserRating.artwork_id == artwork_id
+            ).first()
+            
+            if existing_rating:
+                existing_rating.rating = rating
+            else:
+                new_rating = UserRating(
+                    user_id=user_id,
+                    artwork_id=artwork_id,
+                    rating=rating
+                )
+                db.add(new_rating)
+            
+            db.commit()
+            return True
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error rating artwork: {e}")
+            return False
+
+class UserNoteService:
+    def add_note(self, db: Session, user_id: str, artwork_id: str, note: str) -> bool:
         """Add a note to an artwork"""
-        # Check if note already exists
-        existing_note = db.query(UserNote).filter(
-            and_(UserNote.user_id == user_id, UserNote.artwork_id == artwork_id)
-        ).first()
-        
-        if existing_note:
-            existing_note.note = note
-            existing_note.updated_at = datetime.utcnow()
-        else:
+        try:
             new_note = UserNote(
                 user_id=user_id,
                 artwork_id=artwork_id,
                 note=note
             )
             db.add(new_note)
-        
-        db.commit()
-        return {"message": "Note updated successfully"}
-    
-    def get_user_likes(self, db: Session, user_id: str) -> List[ArtworkResponse]:
-        """Get all artworks liked by user"""
-        liked_artworks = db.query(Artwork).join(UserLike).filter(
-            and_(UserLike.user_id == user_id, UserLike.liked == True)
-        ).all()
-        return [ArtworkResponse.model_validate(artwork) for artwork in liked_artworks]
-    
-    def get_user_stats(self, db: Session, user_id: str) -> UserStats:
-        """Get user statistics"""
-        # Total interactions (likes + ratings + notes)
-        likes_count = db.query(UserLike).filter(UserLike.user_id == user_id).count()
-        ratings_count = db.query(UserRating).filter(UserRating.user_id == user_id).count()
-        notes_count = db.query(UserNote).filter(UserNote.user_id == user_id).count()
-        total_interactions = likes_count + ratings_count + notes_count
-        
-        # Liked artworks count
-        liked_count = db.query(UserLike).filter(
-            and_(UserLike.user_id == user_id, UserLike.liked == True)
-        ).count()
-        
-        # Unique museums
-        liked_artworks = db.query(Artwork).join(UserLike).filter(
-            and_(UserLike.user_id == user_id, UserLike.liked == True)
-        ).all()
-        unique_museums = len(set(artwork.source for artwork in liked_artworks))
-        
-        # Average rating
-        ratings = db.query(UserRating).filter(UserRating.user_id == user_id).all()
-        avg_rating = sum(rating.rating for rating in ratings) / len(ratings) if ratings else 0
-        
-        return UserStats(
-            total_artworks=total_interactions,
-            liked_artworks=liked_count,
-            unique_museums=unique_museums,
-            avg_rating=avg_rating
-        )
+            db.commit()
+            return True
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error adding note: {e}")
+            return False
 
-class ArtworkService:
-    def get_random_artwork(self, db: Session, sources: List[str], user_id: str) -> ArtworkResponse:
-        """Get a random artwork with improved diversity and dynamic loading"""
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        # First try to get from database with diversity improvements
-        from sqlalchemy import func
-        existing_artwork = self._get_diverse_artwork(db, sources, user_id)
-        
-        if existing_artwork:
-            return ArtworkResponse.model_validate(existing_artwork)
-        
-        # If no artwork in database, try to fetch from external APIs
+class BoardService:
+    def create_board(self, db: Session, user_id: str, board_data: BoardCreate) -> BoardResponse:
+        """Create a new board for a user"""
         try:
-            from api.artwork_populator import ArtworkPopulator
-            populator = ArtworkPopulator()
-            
-            # Try to populate from one of the requested sources
-            for source in sources:
-                if source in populator.sources:
-                    logger.info(f"Attempting to fetch from {source}...")
-                    saved_count = populator.fetch_and_save_from_source(source, populator.sources[source], limit=3)
-                    if saved_count > 0:
-                        # Try to get the newly saved artwork
-                        new_artwork = self._get_diverse_artwork(db, sources, user_id)
-                        if new_artwork:
-                            return ArtworkResponse.model_validate(new_artwork)
-        except Exception as e:
-            logger.error(f"Error fetching from external APIs: {e}")
-        
-        # Fallback to any artwork in database
-        sample_artwork = db.query(Artwork).order_by(func.random()).first()
-        if sample_artwork:
-            return ArtworkResponse.model_validate(sample_artwork)
-        
-        # If still no artwork, try to populate from all sources
-        try:
-            logger.info("No artworks found, attempting to populate from all sources...")
-            from api.artwork_populator import populate_database
-            results = populate_database(artworks_per_source=2)
-            
-            # Try to get any newly saved artwork
-            new_artwork = self._get_diverse_artwork(db, sources, user_id)
-            if new_artwork:
-                return ArtworkResponse.model_validate(new_artwork)
-        except Exception as e:
-            logger.error(f"Error populating database: {e}")
-        
-        raise ValueError("No artwork found - please try again in a moment")
-    
-    def _get_diverse_artwork(self, db: Session, sources: List[str], user_id: str) -> Optional[Artwork]:
-        """Get artwork with diversity improvements"""
-        from sqlalchemy import func
-        
-        # Get user's recently seen artworks to avoid repetition
-        recent_artworks = db.query(UserLike.artwork_id).filter(
-            and_(UserLike.user_id == user_id, UserLike.created_at >= datetime.utcnow() - timedelta(hours=24))
-        ).all()
-        recent_ids = [r[0] for r in recent_artworks]
-        
-        # Build query with diversity filters
-        query = db.query(Artwork)
-        
-        # Filter by sources
-        if "all" not in sources:
-            query = query.filter(Artwork.source.in_(sources))
-        
-        # Exclude recently seen artworks
-        if recent_ids:
-            query = query.filter(~Artwork.id.in_(recent_ids))
-        
-        # Try to get artwork from less popular sources first
-        artwork = query.order_by(func.random()).first()
-        
-        if not artwork:
-            # If no diverse artwork found, get any random artwork
-            query = db.query(Artwork)
-            if "all" not in sources:
-                query = query.filter(Artwork.source.in_(sources))
-            artwork = query.order_by(func.random()).first()
-        
-        return artwork
-    
-    def get_artwork_recommendations(self, db: Session, user_id: str, limit: int = 10) -> List[ArtworkResponse]:
-        """Get personalized artwork recommendations based on user preferences"""
-        # Get user's liked sources
-        liked_sources = db.query(Artwork.source).join(UserLike).filter(
-            and_(UserLike.user_id == user_id, UserLike.liked == True)
-        ).distinct().all()
-        liked_source_names = [s[0] for s in liked_sources]
-        
-        # Get artworks from liked sources
-        recommendations = db.query(Artwork).filter(
-            Artwork.source.in_(liked_source_names)
-        ).order_by(func.random()).limit(limit).all()
-        
-        return [ArtworkResponse.model_validate(artwork) for artwork in recommendations]
-    
-    def get_popular_artworks(self, db: Session, limit: int = 10) -> List[ArtworkResponse]:
-        """Get most popular artworks based on likes"""
-        popular_artworks = db.query(Artwork).join(UserLike).filter(
-            UserLike.liked == True
-        ).group_by(Artwork.id).order_by(func.count(UserLike.id).desc()).limit(limit).all()
-        
-        return [ArtworkResponse.model_validate(artwork) for artwork in popular_artworks]
-    
-    def search_artworks(self, db: Session, source: Optional[str], artist: Optional[str], 
-                       date_range: Optional[str], user_id: str) -> List[ArtworkResponse]:
-        """Search artworks with filters"""
-        query = db.query(Artwork)
-        
-        if source:
-            query = query.filter(Artwork.source == source)
-        
-        if artist:
-            query = query.filter(Artwork.artist.ilike(f"%{artist}%"))
-        
-        if date_range:
-            # Simple date range filtering (can be enhanced)
-            query = query.filter(Artwork.date.ilike(f"%{date_range}%"))
-        
-        artworks = query.all()
-        return [ArtworkResponse.model_validate(artwork) for artwork in artworks]
-    
-    def get_artworks(self, db: Session, sources: List[str], offset: int = 0, 
-                    limit: int = 20, sort_by: str = "random") -> List[ArtworkResponse]:
-        """Get paginated artworks with sorting and filtering"""
-        query = db.query(Artwork)
-        
-        # Filter by sources
-        if "all" not in sources:
-            query = query.filter(Artwork.source.in_(sources))
-        
-        # Apply sorting
-        if sort_by == "recent":
-            query = query.order_by(Artwork.created_at.desc())
-        elif sort_by == "popular":
-            # Join with likes to sort by popularity
-            query = query.join(UserLike).filter(UserLike.liked == True)
-            query = query.group_by(Artwork.id).order_by(func.count(UserLike.id).desc())
-        elif sort_by == "artist":
-            query = query.order_by(Artwork.artist.asc())
-        else:  # random
-            query = query.order_by(func.random())
-        
-        # Apply pagination
-        artworks = query.offset(offset).limit(limit).all()
-        return [ArtworkResponse.model_validate(artwork) for artwork in artworks]
-    
-    def cache_api_response(self, db: Session, cache_key: str, data: dict, 
-                          expires_in_minutes: int = 60) -> None:
-        """Cache API response in database"""
-        expires_at = datetime.utcnow() + timedelta(minutes=expires_in_minutes)
-        
-        cache_entry = APICache(
-            cache_key=cache_key,
-            cache_data=json.dumps(data),
-            expires_at=expires_at
-        )
-        
-        db.add(cache_entry)
-        db.commit()
-    
-    def get_cached_response(self, db: Session, cache_key: str) -> Optional[dict]:
-        """Get cached API response"""
-        cache_entry = db.query(APICache).filter(
-            and_(
-                APICache.cache_key == cache_key,
-                APICache.expires_at > datetime.utcnow()
+            db_board = Board(
+                user_id=user_id,
+                name=board_data.name,
+                description=board_data.description,
+                is_public=board_data.is_public
             )
-        ).first()
-        
-        if cache_entry:
-            return json.loads(cache_entry.cache_data)
-        return None 
+            db.add(db_board)
+            db.commit()
+            db.refresh(db_board)
+            return BoardResponse.model_validate(db_board)
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error creating board: {e}")
+            raise
+
+    def get_user_boards(self, db: Session, user_id: str) -> List[BoardResponse]:
+        """Get all boards for a user"""
+        try:
+            boards = db.query(Board).filter(Board.user_id == user_id).all()
+            return [BoardResponse.model_validate(board) for board in boards]
+        except Exception as e:
+            logger.error(f"Error getting user boards: {e}")
+            raise
+
+    def get_board(self, db: Session, board_id: str, user_id: str) -> Optional[BoardResponse]:
+        """Get a specific board"""
+        try:
+            board = db.query(Board).filter(
+                Board.id == board_id,
+                Board.user_id == user_id
+            ).first()
+            return BoardResponse.model_validate(board) if board else None
+        except Exception as e:
+            logger.error(f"Error getting board: {e}")
+            raise
+
+    def update_board(self, db: Session, board_id: str, user_id: str, board_data: BoardUpdate) -> Optional[BoardResponse]:
+        """Update a board"""
+        try:
+            board = db.query(Board).filter(
+                Board.id == board_id,
+                Board.user_id == user_id
+            ).first()
+            
+            if not board:
+                return None
+            
+            if board_data.name is not None:
+                board.name = board_data.name
+            if board_data.description is not None:
+                board.description = board_data.description
+            if board_data.is_public is not None:
+                board.is_public = board_data.is_public
+            
+            board.updated_at = datetime.utcnow()
+            db.commit()
+            db.refresh(board)
+            return BoardResponse.model_validate(board)
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error updating board: {e}")
+            raise
+
+    def delete_board(self, db: Session, board_id: str, user_id: str) -> bool:
+        """Delete a board"""
+        try:
+            board = db.query(Board).filter(
+                Board.id == board_id,
+                Board.user_id == user_id
+            ).first()
+            
+            if not board:
+                return False
+            
+            db.delete(board)
+            db.commit()
+            return True
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error deleting board: {e}")
+            return False
+
+    def add_artwork_to_board(self, db: Session, board_id: str, user_id: str, artwork_id: str) -> bool:
+        """Add an artwork to a board"""
+        try:
+            # Verify board belongs to user
+            board = db.query(Board).filter(
+                Board.id == board_id,
+                Board.user_id == user_id
+            ).first()
+            
+            if not board:
+                return False
+            
+            # Check if artwork already in board
+            existing = db.query(BoardArtwork).filter(
+                BoardArtwork.board_id == board_id,
+                BoardArtwork.artwork_id == artwork_id
+            ).first()
+            
+            if existing:
+                return True  # Already exists
+            
+            board_artwork = BoardArtwork(
+                board_id=board_id,
+                artwork_id=artwork_id
+            )
+            db.add(board_artwork)
+            db.commit()
+            return True
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error adding artwork to board: {e}")
+            return False
+
+    def remove_artwork_from_board(self, db: Session, board_id: str, user_id: str, artwork_id: str) -> bool:
+        """Remove an artwork from a board"""
+        try:
+            # Verify board belongs to user
+            board = db.query(Board).filter(
+                Board.id == board_id,
+                Board.user_id == user_id
+            ).first()
+            
+            if not board:
+                return False
+            
+            board_artwork = db.query(BoardArtwork).filter(
+                BoardArtwork.board_id == board_id,
+                BoardArtwork.artwork_id == artwork_id
+            ).first()
+            
+            if not board_artwork:
+                return False
+            
+            db.delete(board_artwork)
+            db.commit()
+            return True
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error removing artwork from board: {e}")
+            return False
+
+    def get_board_artworks(self, db: Session, board_id: str, user_id: str) -> List[Artwork]:
+        """Get all artworks in a board"""
+        try:
+            # Verify board belongs to user
+            board = db.query(Board).filter(
+                Board.id == board_id,
+                Board.user_id == user_id
+            ).first()
+            
+            if not board:
+                return []
+            
+            return db.query(Artwork).join(BoardArtwork).filter(
+                BoardArtwork.board_id == board_id
+            ).all()
+        except Exception as e:
+            logger.error(f"Error getting board artworks: {e}")
+            raise
+
+class ImageCacheService:
+    def get_cached_image(self, db: Session, original_url: str) -> Optional[ImageCache]:
+        """Get cached image by original URL"""
+        try:
+            return db.query(ImageCache).filter(ImageCache.original_url == original_url).first()
+        except Exception as e:
+            logger.error(f"Error getting cached image: {e}")
+            return None
+
+    def cache_image(self, db: Session, image_data: Dict) -> ImageCache:
+        """Cache image validation result"""
+        try:
+            # Check if already cached
+            existing = db.query(ImageCache).filter(
+                ImageCache.original_url == image_data['url']
+            ).first()
+            
+            if existing:
+                # Update existing cache
+                existing.is_valid = image_data.get('valid', False)
+                existing.width = image_data.get('width')
+                existing.height = image_data.get('height')
+                existing.format = image_data.get('format')
+                existing.size_bytes = image_data.get('size_bytes')
+                existing.error_message = image_data.get('error')
+                existing.last_validated = datetime.utcnow()
+                existing.updated_at = datetime.utcnow()
+            else:
+                # Create new cache entry
+                existing = ImageCache(
+                    original_url=image_data['url'],
+                    is_valid=image_data.get('valid', False),
+                    width=image_data.get('width'),
+                    height=image_data.get('height'),
+                    format=image_data.get('format'),
+                    size_bytes=image_data.get('size_bytes'),
+                    error_message=image_data.get('error'),
+                    source=image_data.get('source')
+                )
+                db.add(existing)
+            
+            db.commit()
+            db.refresh(existing)
+            return existing
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error caching image: {e}")
+            raise
+
+    def get_valid_images_for_source(self, db: Session, source: str) -> List[ImageCache]:
+        """Get all valid cached images for a source"""
+        try:
+            return db.query(ImageCache).filter(
+                ImageCache.source == source,
+                ImageCache.is_valid == True
+            ).all()
+        except Exception as e:
+            logger.error(f"Error getting valid images for source: {e}")
+            return []
+
+    def cleanup_old_cache(self, db: Session, days: int = 30) -> int:
+        """Clean up old cache entries"""
+        try:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            deleted = db.query(ImageCache).filter(
+                ImageCache.last_validated < cutoff_date
+            ).delete()
+            db.commit()
+            return deleted
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error cleaning up cache: {e}")
+            return 0
+
+# Service instances
+user_service = UserService()
+artwork_service = ArtworkService()
+user_like_service = UserLikeService()
+user_rating_service = UserRatingService()
+user_note_service = UserNoteService()
+board_service = BoardService()
+image_cache_service = ImageCacheService() 

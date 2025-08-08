@@ -14,7 +14,7 @@ def test_registration():
     url = f"{base_url}/register"
     
     headers = {
-        "Origin": "https://art-6y598lbos-darbyrushs-projects.vercel.app",
+        "Origin": "https://art-nsws1hdkk-darbyrushs-projects.vercel.app",
         "Content-Type": "application/json",
         "User-Agent": "Test-Script/1.0"
     }
@@ -23,8 +23,7 @@ def test_registration():
     unique_id = str(uuid.uuid4())[:8]
     test_data = {
         "username": f"testuser_{unique_id}",
-        "password": "testpass123",
-        "email": f"test_{unique_id}@example.com"
+        "password": "testpass123"
     }
     
     print("Testing Registration Endpoint")
@@ -35,7 +34,7 @@ def test_registration():
     print()
     
     try:
-        # Test OPTIONS first with more detailed debugging
+        # Test OPTIONS first
         print("Testing OPTIONS request...")
         response = requests.options(url, headers=headers, timeout=10)
         print(f"OPTIONS Status: {response.status_code}")

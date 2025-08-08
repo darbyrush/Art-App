@@ -1,127 +1,215 @@
 /**
- * Image utility functions for standardizing artwork images
+ * Advanced Image Utilities for Art Explorer
+ * Uses optimized backend endpoints for better performance
  */
 
 // Standard image dimensions for consistent display
 export const IMAGE_SIZES = {
-  THUMBNAIL: { width: 300, height: 300 },
-  MEDIUM: { width: 600, height: 600 },
+  THUMBNAIL: { width: 200, height: 200 },
+  MEDIUM: { width: 400, height: 400 },
   LARGE: { width: 800, height: 800 },
   GALLERY: { width: 400, height: 400 },
-  FEED: { width: 600, height: 500 }
+  FEED: { width: 300, height: 300 }
 }
 
-/**
- * Standardize image URL to ensure consistent sizing
- * @param {string} originalUrl - Original image URL
- * @param {string} size - Size key from IMAGE_SIZES
- * @returns {string} - Standardized image URL
- */
-export function standardizeImageUrl(originalUrl, size = 'MEDIUM') {
-  if (!originalUrl) return null
-  
-  const dimensions = IMAGE_SIZES[size]
-  
-  // Handle different image URL patterns
-  if (originalUrl.includes('images.metmuseum.org')) {
-    // Met Museum images
-    return originalUrl.replace(/\/full\//, `/${dimensions.width},${dimensions.height}/`)
-  } else if (originalUrl.includes('clevelandart.org')) {
-    // Cleveland Museum images
-    return originalUrl.replace(/\/full\//, `/${dimensions.width}x${dimensions.height}/`)
-  } else if (originalUrl.includes('artic.edu')) {
-    // Art Institute of Chicago images
-    return originalUrl.replace(/\/full\//, `/${dimensions.width},${dimensions.height}/`)
-  } else if (originalUrl.includes('harvardartmuseums.org')) {
-    // Harvard Art Museums images
-    return originalUrl.replace(/\/full\//, `/${dimensions.width}x${dimensions.height}/`)
-  } else if (originalUrl.includes('si.edu')) {
-    // Smithsonian images
-    return originalUrl.replace(/\/full\//, `/${dimensions.width}x${dimensions.height}/`)
-  } else if (originalUrl.includes('nga.gov')) {
-    // National Gallery of Art images
-    return originalUrl.replace(/\/full\//, `/${dimensions.width}x${dimensions.height}/`)
-  } else if (originalUrl.includes('thewalters.org')) {
-    // Walters Art Museum images
-    return originalUrl.replace(/\/full\//, `/${dimensions.width}x${dimensions.height}/`)
-  }
-  
-  // Default: return original URL if no pattern matches
-  return originalUrl
+// Image loading states
+export const IMAGE_STATES = {
+  LOADING: 'loading',
+  LOADED: 'loaded',
+  ERROR: 'error',
+  FALLBACK: 'fallback'
 }
 
+// API base URL
+const API_BASE_URL = 'http://localhost:8001'
+
+// Image validation cache
+const imageValidationCache = new Map()
+const imageLoadCache = new Map()
+
 /**
- * Get optimized image URL for different use cases
+ * Get optimized image URL from backend
  * @param {string} originalUrl - Original image URL
  * @param {string} useCase - 'thumbnail', 'gallery', 'detail', 'full'
  * @returns {string} - Optimized image URL
  */
 export function getOptimizedImageUrl(originalUrl, useCase = 'gallery') {
-  const sizeMap = {
-    'thumbnail': 'THUMBNAIL',
-    'gallery': 'GALLERY',
-    'detail': 'MEDIUM',
-    'full': 'LARGE',
-    'feed': 'FEED'
+  if (!originalUrl) {
+    return getFallbackImageUrl('default')
   }
   
-  const size = sizeMap[useCase] || 'MEDIUM'
-  return standardizeImageUrl(originalUrl, size)
+  // Use cached image endpoint instead of optimize
+  const encodedUrl = encodeURIComponent(originalUrl)
+  return `${API_BASE_URL}/images/cached/${encodedUrl}`
 }
 
 /**
- * Check if image URL is valid and accessible
- * @param {string} url - Image URL to check
- * @returns {Promise<boolean>} - Whether image is accessible
+ * Get fallback image URL with optimization
+ * @param {string} source - Art source name
+ * @param {string} style - 'modern', 'minimal', 'classic'
+ * @returns {string} - Optimized fallback image URL
  */
-export async function isImageAccessible(url) {
-  if (!url) return false
+export function getFallbackImageUrl(source, style = 'modern') {
+  const params = new URLSearchParams({
+    width: 400,
+    height: 400,
+    style: style
+  })
+  
+  return `${API_BASE_URL}/images/placeholder/${source}?${params.toString()}`
+}
+
+/**
+ * Progressive image loading with multiple fallback strategies
+ * @param {string} originalUrl - Original image URL
+ * @param {string} source - Art source name
+ * @param {string} useCase - Image use case
+ * @returns {Promise<Object>} - Image loading result
+ */
+export async function loadImageWithFallback(originalUrl, source, useCase = 'gallery') {
+  const cacheKey = `${originalUrl}:${useCase}`
+  
+  // Check cache first
+  if (imageLoadCache.has(cacheKey)) {
+    return imageLoadCache.get(cacheKey)
+  }
+  
+  const result = {
+    state: IMAGE_STATES.LOADING,
+    url: null,
+    error: null,
+    optimized: false
+  }
   
   try {
-    const response = await fetch(url, { method: 'HEAD' })
-    return response.ok
+    // Try optimized image first
+    const optimizedUrl = getOptimizedImageUrl(originalUrl, useCase)
+    const optimizedImage = await loadImage(optimizedUrl)
+    
+    if (optimizedImage.success) {
+      result.state = IMAGE_STATES.LOADED
+      result.url = optimizedUrl
+      result.optimized = true
+    } else {
+      // Try original URL
+      const originalImage = await loadImage(originalUrl)
+      
+      if (originalImage.success) {
+        result.state = IMAGE_STATES.LOADED
+        result.url = originalUrl
+      } else {
+        // Use fallback
+        const fallbackUrl = getFallbackImageUrl(source)
+        const fallbackImage = await loadImage(fallbackUrl)
+        
+        if (fallbackImage.success) {
+          result.state = IMAGE_STATES.FALLBACK
+          result.url = fallbackUrl
+        } else {
+          result.state = IMAGE_STATES.ERROR
+          result.error = 'All image loading strategies failed'
+        }
+      }
+    }
   } catch (error) {
-    console.warn('Image accessibility check failed:', error)
+    result.state = IMAGE_STATES.ERROR
+    result.error = error.message
+  }
+  
+  // Cache result
+  imageLoadCache.set(cacheKey, result)
+  return result
+}
+
+/**
+ * Load image with timeout and error handling
+ * @param {string} url - Image URL
+ * @param {number} timeout - Timeout in milliseconds
+ * @returns {Promise<Object>} - Loading result
+ */
+async function loadImage(url, timeout = 10000) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const timer = setTimeout(() => {
+      img.src = ''
+      resolve({ success: false, error: 'Timeout' })
+    }, timeout)
+    
+    img.onload = () => {
+      clearTimeout(timer)
+      resolve({ success: true })
+    }
+    
+    img.onerror = () => {
+      clearTimeout(timer)
+      resolve({ success: false, error: 'Load failed' })
+    }
+    
+    img.src = url
+  })
+}
+
+/**
+ * Validate image URL accessibility
+ * @param {string} url - Image URL to validate
+ * @returns {Promise<boolean>} - Whether image is accessible
+ */
+export async function validateImageUrl(url) {
+  // Check cache first
+  if (imageValidationCache.has(url)) {
+    return imageValidationCache.get(url)
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/images/info?url=${encodeURIComponent(url)}`)
+    const info = await response.json()
+    
+    const isValid = !info.error && info.width && info.height
+    imageValidationCache.set(url, isValid)
+    return isValid
+  } catch (error) {
+    console.warn('Image validation failed:', error)
+    imageValidationCache.set(url, false)
     return false
   }
 }
 
 /**
- * Get fallback image URL if original fails
- * @param {string} source - Art source name
- * @returns {string} - Fallback image URL
+ * Validate multiple image URLs
+ * @param {Array<string>} urls - Array of image URLs
+ * @returns {Promise<Object>} - Validation results
  */
-export function getFallbackImageUrl(source) {
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-  
-  const fallbackImages = {
-    'met': `${API_BASE_URL}/placeholder/met.jpg`,
-    'cleveland': `${API_BASE_URL}/placeholder/cleveland.jpg`,
-    'chicago': `${API_BASE_URL}/placeholder/chicago.jpg`,
-    'harvard': `${API_BASE_URL}/placeholder/harvard.jpg`,
-    'smithsonian': `${API_BASE_URL}/placeholder/smithsonian.jpg`,
-    'national_gallery': `${API_BASE_URL}/placeholder/nga.jpg`,
-    'walters': `${API_BASE_URL}/placeholder/walters.jpg`
+export async function validateMultipleImages(urls) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/images/validate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(urls)
+    })
+    return await response.json()
+  } catch (error) {
+    console.error('Batch image validation failed:', error)
+    return {}
   }
-  
-  return fallbackImages[source] || `${API_BASE_URL}/placeholder/default.jpg`
 }
 
 /**
- * Create image loading state
- * @param {string} url - Image URL
- * @param {string} alt - Image alt text
- * @param {string} useCase - Image use case
- * @returns {Object} - Image object with loading state
+ * Clear image caches
  */
-export function createImageObject(url, alt, useCase = 'gallery') {
+export function clearImageCaches() {
+  imageValidationCache.clear()
+  imageLoadCache.clear()
+}
+
+/**
+ * Get image loading statistics
+ * @returns {Object} - Cache statistics
+ */
+export function getImageCacheStats() {
   return {
-    originalUrl: url,
-    optimizedUrl: getOptimizedImageUrl(url, useCase),
-    fallbackUrl: getFallbackImageUrl(alt),
-    alt: alt,
-    loading: true,
-    error: false,
-    loaded: false
+    validationCacheSize: imageValidationCache.size,
+    loadCacheSize: imageLoadCache.size
   }
 } 

@@ -142,6 +142,47 @@ export const apiClient = {
     return response.data
   },
 
+  // Board endpoints
+  async createBoard(boardData) {
+    const response = await api.post('/boards', boardData)
+    return response.data
+  },
+
+  async getUserBoards() {
+    const response = await api.get('/boards')
+    return response.data
+  },
+
+  async getBoard(boardId) {
+    const response = await api.get(`/boards/${boardId}`)
+    return response.data
+  },
+
+  async updateBoard(boardId, boardData) {
+    const response = await api.put(`/boards/${boardId}`, boardData)
+    return response.data
+  },
+
+  async deleteBoard(boardId) {
+    const response = await api.delete(`/boards/${boardId}`)
+    return response.data
+  },
+
+  async addArtworkToBoard(boardId, artworkId) {
+    const response = await api.post(`/boards/${boardId}/artworks`, { artwork_id: artworkId })
+    return response.data
+  },
+
+  async removeArtworkFromBoard(boardId, artworkId) {
+    const response = await api.delete(`/boards/${boardId}/artworks/${artworkId}`)
+    return response.data
+  },
+
+  async getBoardArtworks(boardId) {
+    const response = await api.get(`/boards/${boardId}/artworks`)
+    return response.data
+  },
+
   // Health check
   async healthCheck() {
     const response = await api.get('/health')

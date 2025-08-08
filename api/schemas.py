@@ -1,23 +1,24 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import List, Optional
 from datetime import datetime
 
-class UserBase(BaseModel):
+class UserCreate(BaseModel):
     username: str
-    email: Optional[str] = None  # Changed from EmailStr to str to allow empty strings
-
-class UserCreate(UserBase):
+    email: Optional[EmailStr] = None
     password: str
 
-class UserResponse(UserBase):
+class UserResponse(BaseModel):
     id: str
+    username: str
+    email: Optional[str] = None
     created_at: datetime
     is_active: bool
     
     class Config:
         from_attributes = True
 
-class ArtworkBase(BaseModel):
+class ArtworkResponse(BaseModel):
+    id: str
     title: str
     artist: Optional[str] = None
     date: Optional[str] = None
@@ -26,9 +27,6 @@ class ArtworkBase(BaseModel):
     source: str
     image_url: Optional[str] = None
     external_id: Optional[str] = None
-
-class ArtworkResponse(ArtworkBase):
-    id: str
     created_at: datetime
     updated_at: datetime
     
@@ -39,10 +37,10 @@ class UserLikeCreate(BaseModel):
     liked: bool = True
 
 class UserRatingCreate(BaseModel):
-    rating: int  # 1-5 stars
+    rating: int
 
 class UserNoteCreate(BaseModel):
-    note: Optional[str] = None
+    note: str
 
 class Token(BaseModel):
     access_token: str
@@ -57,7 +55,42 @@ class UserStats(BaseModel):
     unique_museums: int
     avg_rating: float
 
-class SearchFilters(BaseModel):
-    source: Optional[str] = None
-    artist: Optional[str] = None
-    date_range: Optional[str] = None 
+class BoardCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    is_public: bool = False
+
+class BoardUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_public: Optional[bool] = None
+
+class BoardResponse(BaseModel):
+    id: str
+    user_id: str
+    name: str
+    description: Optional[str] = None
+    is_public: bool
+    created_at: datetime
+    updated_at: datetime
+    artwork_count: int = 0
+    
+    class Config:
+        from_attributes = True
+
+class BoardArtworkCreate(BaseModel):
+    artwork_id: str
+
+class BoardArtworkResponse(BaseModel):
+    id: str
+    board_id: str
+    artwork_id: str
+    added_at: datetime
+    artwork: ArtworkResponse
+    
+    class Config:
+        from_attributes = True
+
+class BoardWithArtworksResponse(BaseModel):
+    board: BoardResponse
+    artworks: List[ArtworkResponse] 

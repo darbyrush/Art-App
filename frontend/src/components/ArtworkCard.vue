@@ -3,12 +3,12 @@
     <!-- Image Container -->
     <div class="relative aspect-square overflow-hidden">
       <!-- Loading State -->
-      <div v-if="imageState.loading" class="absolute inset-0 flex items-center justify-center bg-gray-100">
+      <div v-if="imageState.state === 'loading'" class="absolute inset-0 flex items-center justify-center bg-gray-100">
         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
       </div>
       
       <!-- Error State -->
-      <div v-else-if="imageState.error" class="absolute inset-0 flex items-center justify-center bg-gray-100">
+      <div v-else-if="imageState.state === 'error'" class="absolute inset-0 flex items-center justify-center bg-gray-100">
         <div class="text-center">
           <div class="text-4xl mb-2">🖼️</div>
           <p class="text-sm text-gray-500">Image unavailable</p>
@@ -17,15 +17,27 @@
       
       <!-- Image -->
       <img
-        v-show="!imageState.loading && !imageState.error"
-        :src="imageState.optimizedUrl"
+        v-show="imageState.state === 'loaded' || imageState.state === 'fallback'"
+        :src="imageState.url"
         :alt="artwork.title"
         class="w-full h-full object-cover transition-opacity duration-300"
-        :class="{ 'opacity-0': imageState.loading }"
+        :class="{ 'opacity-0': imageState.state === 'loading' }"
         @load="handleImageLoad"
         @error="handleImageError"
         @click="$emit('click', artwork)"
       >
+      
+      <!-- Optimization Badge -->
+      <div v-if="imageState.optimized && imageState.state === 'loaded'" 
+           class="absolute top-2 left-2 px-2 py-1 bg-green-500 text-white text-xs rounded-full opacity-75">
+        ⚡
+      </div>
+      
+      <!-- Fallback Badge -->
+      <div v-if="imageState.state === 'fallback'" 
+           class="absolute top-2 left-2 px-2 py-1 bg-yellow-500 text-white text-xs rounded-full opacity-75">
+        🖼️
+      </div>
       
       <!-- Like Button Overlay -->
       <button
@@ -63,8 +75,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { getOptimizedImageUrl, getFallbackImageUrl } from '@/utils/imageUtils'
+import { ref, computed, onMounted, watch } from 'vue'
+import { 
+  getOptimizedImageUrl, 
+  getFallbackImageUrl, 
+  loadImageWithFallback,
+  IMAGE_STATES 
+} from '@/utils/imageUtils'
 
 const props = defineProps({
   artwork: {
@@ -84,28 +101,34 @@ const props = defineProps({
 const emit = defineEmits(['click', 'like', 'unlike'])
 
 const imageState = ref({
-  originalUrl: props.artwork.image_url,
-  optimizedUrl: getOptimizedImageUrl(props.artwork.image_url, 'gallery'),
-  fallbackUrl: getFallbackImageUrl(props.artwork.source),
-  loading: true,
-  error: false,
-  loaded: false
+  state: IMAGE_STATES.LOADING,
+  url: null,
+  error: null,
+  optimized: false
 })
 
 const handleImageLoad = () => {
-  imageState.value.loading = false
-  imageState.value.loaded = true
+  imageState.value.state = IMAGE_STATES.LOADED
 }
 
-const handleImageError = () => {
-  imageState.value.loading = false
-  imageState.value.error = true
-  
-  // Try fallback image
-  if (imageState.value.optimizedUrl !== imageState.value.fallbackUrl) {
-    imageState.value.optimizedUrl = imageState.value.fallbackUrl
-    imageState.value.loading = true
-    imageState.value.error = false
+const handleImageError = async () => {
+  // Try progressive loading with fallback
+  try {
+    const result = await loadImageWithFallback(
+      props.artwork.image_url, 
+      props.artwork.source, 
+      'gallery'
+    )
+    
+    imageState.value = result
+    
+    if (result.state === IMAGE_STATES.ERROR) {
+      console.warn('All image loading strategies failed for:', props.artwork.title)
+    }
+  } catch (error) {
+    console.error('Error in progressive image loading:', error)
+    imageState.value.state = IMAGE_STATES.ERROR
+    imageState.value.error = error.message
   }
 }
 
@@ -130,16 +153,33 @@ const getSourceDisplayName = (source) => {
   return displayNames[source] || source
 }
 
-// Reset image state when artwork changes
-onMounted(() => {
-  imageState.value = {
-    originalUrl: props.artwork.image_url,
-    optimizedUrl: getOptimizedImageUrl(props.artwork.image_url, 'gallery'),
-    fallbackUrl: getFallbackImageUrl(props.artwork.source),
-    loading: true,
-    error: false,
-    loaded: false
+// Initialize image loading
+const initializeImage = async () => {
+  if (!props.artwork.image_url) {
+    imageState.value = {
+      state: IMAGE_STATES.FALLBACK,
+      url: getFallbackImageUrl(props.artwork.source),
+      error: null,
+      optimized: false
+    }
+    return
   }
+  
+  // Start with optimized URL
+  imageState.value = {
+    state: IMAGE_STATES.LOADING,
+    url: getOptimizedImageUrl(props.artwork.image_url, 'gallery'),
+    error: null,
+    optimized: true
+  }
+}
+
+// Watch for artwork changes
+watch(() => props.artwork, initializeImage, { immediate: true })
+
+// Lifecycle
+onMounted(() => {
+  initializeImage()
 })
 </script>
 
