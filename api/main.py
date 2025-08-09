@@ -458,7 +458,7 @@ def get_artworks(
             detail=f"Error fetching artworks: {str(e)}"
         )
 
-@app.get("/artworks/gallery", response_model=List[ArtworkResponse])
+@app.get("/artworks/gallery")
 async def get_gallery_artworks(
     page: int = 1,
     sources: Optional[str] = None,
@@ -467,7 +467,7 @@ async def get_gallery_artworks(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get paginated artworks for gallery view with endless scrolling"""
+    """Get paginated artworks for gallery view with endless scrolling - optimized"""
     try:
         source_list = sources.split(",") if sources else ["all"]
         offset = (page - 1) * limit
@@ -480,9 +480,16 @@ async def get_gallery_artworks(
             sort_by
         )
         
-        # For now, return artworks without validation to show real images
-        # Image validation can be re-enabled later with better error handling
-        return artworks
+        # Convert to response format
+        artwork_responses = [ArtworkResponse.model_validate(artwork) for artwork in artworks]
+        
+        return {
+            "artworks": artwork_responses,
+            "page": page,
+            "limit": limit,
+            "has_more": len(artwork_responses) == limit,
+            "count": len(artwork_responses)
+        }
     except Exception as e:
         logger.error(f"Error fetching gallery artworks: {e}")
         raise HTTPException(

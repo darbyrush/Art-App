@@ -91,28 +91,40 @@ class ImageCacheService:
                         
         except Exception as e:
             try:
-                # Cache the error
+                # Cache the error with better error handling
                 if cached:
                     cached.is_valid = False
-                    cached.error_message = str(e)
+                    cached.error_message = str(e)[:500]  # Limit error message length
                     cached.last_validated = datetime.utcnow()
                 else:
                     cached = ImageCache(
                         original_url=url,
                         is_valid=False,
-                        error_message=str(e),
+                        error_message=str(e)[:500],  # Limit error message length
                         source=source,
                         last_validated=datetime.utcnow()
                     )
                     cache_db.add(cached)
                 
+                # Use merge for better transaction handling
+                cache_db.merge(cached)
                 cache_db.commit()
                 logger.error(f"Error downloading image {url}: {e}")
                 return cached
             except Exception as commit_error:
+                try:
+                    cache_db.rollback()
+                except:
+                    pass
                 logger.error(f"Error caching failure for {url}: {commit_error}")
-                cache_db.rollback()
-                return None
+                # Return a minimal error entry without saving
+                return ImageCache(
+                    original_url=url,
+                    is_valid=False,
+                    error_message=str(e)[:500],
+                    source=source,
+                    last_validated=datetime.utcnow()
+                )
         finally:
             cache_db.close()
     

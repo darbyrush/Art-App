@@ -1,10 +1,11 @@
 import logging
 from typing import List, Optional, Dict
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, and_, text
 from database.models import User, Artwork, UserLike, UserRating, UserNote, Board, BoardArtwork, ImageCache
 from api.schemas import UserCreate, UserResponse, ArtworkResponse, BoardCreate, BoardUpdate, BoardResponse, BoardArtworkCreate, BoardArtworkResponse
 from api.auth import get_password_hash, verify_password
+from api.cache import cache_user_by_username, cache_artwork_by_id, invalidate_user_cache, invalidate_artwork_cache
 from datetime import datetime, timedelta
 import base64
 from io import BytesIO
@@ -30,8 +31,9 @@ class UserService:
             logger.error(f"Error creating user: {e}")
             raise
 
+    @cache_user_by_username(ttl=600)
     def get_user_by_username(self, db: Session, username: str) -> Optional[User]:
-        """Get user by username"""
+        """Get user by username with caching"""
         return db.query(User).filter(User.username == username).first()
 
     def authenticate_user(self, db: Session, username: str, password: str) -> Optional[User]:
@@ -45,27 +47,39 @@ class UserService:
 
 class ArtworkService:
     def get_artworks(self, db: Session, sources: List[str] = None, skip: int = 0, limit: int = 100, sort_by: str = "random") -> List[Artwork]:
-        """Get artworks with pagination, filtering, and sorting"""
+        """Get artworks with pagination, filtering, and sorting - optimized"""
         query = db.query(Artwork)
         
         # Apply source filtering if specified
         if sources and "all" not in sources:
             query = query.filter(Artwork.source.in_(sources))
         
-        # Apply sorting
+        # Apply sorting - optimize random queries for large datasets
         if sort_by == "random":
-            query = query.order_by(func.random())
+            # For PostgreSQL, use a more efficient random sampling method
+            # Get total count first, then use offset with random number
+            total_count = query.count()
+            if total_count > limit:
+                import random
+                max_offset = max(0, total_count - limit)
+                random_offset = random.randint(0, max_offset)
+                query = query.offset(random_offset).limit(limit)
+            else:
+                query = query.order_by(func.random()).limit(limit)
         elif sort_by == "title":
-            query = query.order_by(Artwork.title)
+            query = query.order_by(Artwork.title).offset(skip).limit(limit)
         elif sort_by == "date":
-            query = query.order_by(Artwork.date)
+            query = query.order_by(Artwork.date).offset(skip).limit(limit)
         elif sort_by == "artist":
-            query = query.order_by(Artwork.artist)
+            query = query.order_by(Artwork.artist).offset(skip).limit(limit)
+        else:
+            query = query.offset(skip).limit(limit)
         
-        return query.offset(skip).limit(limit).all()
+        return query.all()
 
+    @cache_artwork_by_id(ttl=1800)
     def get_artwork_by_id(self, db: Session, artwork_id: str) -> Optional[Artwork]:
-        """Get artwork by ID"""
+        """Get artwork by ID with caching"""
         return db.query(Artwork).filter(Artwork.id == artwork_id).first()
 
     def get_random_artwork(self, db: Session, sources: Optional[str] = None) -> Optional[Artwork]:

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, Boolean, DateTime, Integer, ForeignKey, Float
+from sqlalchemy import Column, String, Text, Boolean, DateTime, Integer, ForeignKey, Float, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -20,6 +20,13 @@ class User(Base):
     ratings = relationship("UserRating", back_populates="user")
     notes = relationship("UserNote", back_populates="user")
     boards = relationship("Board", back_populates="user")
+    
+    # Add indexes for performance
+    __table_args__ = (
+        Index('idx_user_username', 'username'),
+        Index('idx_user_email', 'email'),
+        Index('idx_user_active', 'is_active'),
+    )
 
 class Artwork(Base):
     __tablename__ = "artworks"
@@ -40,6 +47,15 @@ class Artwork(Base):
     ratings = relationship("UserRating", back_populates="artwork")
     notes = relationship("UserNote", back_populates="artwork")
     board_artworks = relationship("BoardArtwork", back_populates="artwork")
+    
+    # Add indexes for performance
+    __table_args__ = (
+        Index('idx_artwork_source', 'source'),
+        Index('idx_artwork_source_ext_id', 'source', 'external_id'),
+        Index('idx_artwork_created_at', 'created_at'),
+        Index('idx_artwork_title', 'title'),
+        Index('idx_artwork_artist', 'artist'),
+    )
 
 class UserLike(Base):
     __tablename__ = "user_likes"
@@ -51,6 +67,13 @@ class UserLike(Base):
     
     user = relationship("User", back_populates="likes")
     artwork = relationship("Artwork", back_populates="likes")
+    
+    # Add composite index for user-artwork lookups
+    __table_args__ = (
+        Index('idx_user_artwork_like', 'user_id', 'artwork_id'),
+        Index('idx_user_likes', 'user_id'),
+        Index('idx_artwork_likes', 'artwork_id'),
+    )
 
 class UserRating(Base):
     __tablename__ = "user_ratings"
@@ -62,6 +85,13 @@ class UserRating(Base):
     
     user = relationship("User", back_populates="ratings")
     artwork = relationship("Artwork", back_populates="ratings")
+    
+    # Add composite index for user-artwork lookups
+    __table_args__ = (
+        Index('idx_user_artwork_rating', 'user_id', 'artwork_id'),
+        Index('idx_user_ratings', 'user_id'),
+        Index('idx_artwork_ratings', 'artwork_id'),
+    )
 
 class UserNote(Base):
     __tablename__ = "user_notes"
@@ -110,4 +140,12 @@ class ImageCache(Base):
     source = Column(String(50), nullable=True)  # Which art source this belongs to
     last_validated = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow) 
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Add indexes for cache lookups
+    __table_args__ = (
+        Index('idx_image_url_valid', 'original_url', 'is_valid'),
+        Index('idx_image_source', 'source'),
+        Index('idx_image_valid', 'is_valid'),
+        Index('idx_image_validated', 'last_validated'),
+    ) 

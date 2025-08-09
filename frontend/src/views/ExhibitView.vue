@@ -4,8 +4,20 @@
     <header class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
       <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center py-3 sm:py-4">
-          <div class="flex items-center">
+          <div class="flex items-center space-x-3">
             <h1 class="text-lg sm:text-2xl font-serif font-bold text-gray-900">🎨 Exhibit</h1>
+            <!-- Filter Toggle Button -->
+            <button 
+              @click="showFilters = !showFilters"
+              class="flex items-center space-x-1 text-gray-500 hover:text-gray-700 transition-colors p-1 rounded-lg"
+              :class="{ 'text-blue-600': showFilters || hasActiveFilters }"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707v4.586l-4-2v-2.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+              <span class="text-xs hidden sm:inline">Filter</span>
+              <span v-if="hasActiveFilters" class="w-2 h-2 bg-blue-500 rounded-full"></span>
+            </button>
           </div>
           <nav class="flex items-center space-x-2 sm:space-x-4">
             <router-link to="/gallery" class="text-sm sm:text-base text-gray-600 hover:text-gray-900 px-2 py-1 rounded active:bg-gray-100 touch-manipulation">
@@ -20,6 +32,70 @@
           </nav>
         </div>
       </div>
+      
+      <!-- Filter Panel -->
+      <transition name="slide-down">
+        <div v-if="showFilters" class="border-t border-gray-200 bg-gray-50">
+          <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div class="space-y-3">
+              <!-- Source Filter -->
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-sm font-medium text-gray-700 min-w-0">Sources:</span>
+                <div class="flex flex-wrap gap-1">
+                  <button
+                    @click="toggleSourceFilter('all')"
+                    class="px-2 py-1 text-xs rounded-full border transition-colors"
+                    :class="selectedSources.includes('all') 
+                      ? 'bg-blue-100 border-blue-300 text-blue-700' 
+                      : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'"
+                  >
+                    All
+                  </button>
+                  <button
+                    v-for="source in availableSourcesList"
+                    :key="source.key"
+                    @click="toggleSourceFilter(source.key)"
+                    class="px-2 py-1 text-xs rounded-full border transition-colors"
+                    :class="selectedSources.includes(source.key)
+                      ? 'bg-blue-100 border-blue-300 text-blue-700' 
+                      : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'"
+                  >
+                    {{ source.name }}
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Sort Filter -->
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-sm font-medium text-gray-700 min-w-0">Sort:</span>
+                <div class="flex flex-wrap gap-1">
+                  <button
+                    v-for="option in sortOptions"
+                    :key="option.key"
+                    @click="setSortBy(option.key)"
+                    class="px-2 py-1 text-xs rounded-full border transition-colors"
+                    :class="sortBy === option.key
+                      ? 'bg-blue-100 border-blue-300 text-blue-700' 
+                      : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'"
+                  >
+                    {{ option.name }}
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Clear Filters -->
+              <div v-if="hasActiveFilters" class="flex justify-end">
+                <button 
+                  @click="clearFilters"
+                  class="text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                >
+                  Clear filters
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </transition>
     </header>
 
     <!-- Main Content -->
@@ -27,7 +103,9 @@
       <!-- Loading State -->
       <div v-if="loading && artworks.length === 0" class="text-center py-8 sm:py-12">
         <div class="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-2 border-primary-600 mx-auto"></div>
-        <p class="mt-2 sm:mt-4 text-sm sm:text-base text-gray-600">Loading artworks...</p>
+        <p class="mt-2 sm:mt-4 text-sm sm:text-base text-gray-600">
+          {{ hasActiveFilters ? 'Filtering artworks...' : 'Loading artworks...' }}
+        </p>
       </div>
 
       <!-- Empty State -->
@@ -40,8 +118,21 @@
         </button>
       </div>
 
+      <!-- Filter Status (if active) -->
+      <div v-if="hasActiveFilters && !loading && artworks.length > 0" class="mb-4 text-center">
+        <div class="inline-flex items-center space-x-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full text-sm text-blue-700">
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
+          </svg>
+          <span>
+            Showing {{ selectedSources.includes('all') ? 'all sources' : selectedSources.join(', ') }} 
+            {{ sortBy !== 'random' ? `• sorted by ${sortOptions.find(o => o.key === sortBy)?.name || sortBy}` : '' }}
+          </span>
+        </div>
+      </div>
+
       <!-- Instagram-style Feed -->
-      <div v-else class="instagram-feed">
+      <div v-if="artworks.length > 0" class="instagram-feed">
         <div
           v-for="artwork in artworks"
           :key="`${artwork.id}-${artwork.updated_at || Date.now()}`"
@@ -177,6 +268,9 @@ const sortBy = ref('random')
 const imageLoading = ref({})
 const isLoadingMore = ref(false)
 
+// Filter state
+const showFilters = ref(false)
+
 // Modal state
 const showRatingModal = ref(false)
 const selectedArtwork = ref(null)
@@ -189,17 +283,45 @@ let observer = null
 // Computed properties
 const availableSources = computed(() => artworkStore.availableSources)
 
+// Available sources for filtering
+const availableSourcesList = computed(() => [
+  { key: 'met', name: 'Met Museum' },
+  { key: 'cleveland', name: 'Cleveland' },
+  { key: 'chicago', name: 'Art Institute' },
+  { key: 'smithsonian', name: 'Smithsonian' },
+  { key: 'harvard', name: 'Harvard' },
+  { key: 'walters', name: 'Walters' },
+  { key: 'national_gallery', name: 'National Gallery' }
+])
+
+// Sort options
+const sortOptions = computed(() => [
+  { key: 'random', name: '🎲 Surprise me' },
+  { key: 'title', name: '📝 Title' },
+  { key: 'artist', name: '👨‍🎨 Artist' },
+  { key: 'date', name: '📅 Date' }
+])
+
+// Check if any filters are active
+const hasActiveFilters = computed(() => {
+  return !selectedSources.value.includes('all') || sortBy.value !== 'random'
+})
+
 // Methods
 const loadMoreArtworks = async () => {
   if (loading.value || isLoadingMore.value || !hasMore.value) return
   
   try {
     isLoadingMore.value = true
-    const newArtworks = await artworkStore.getGalleryArtworks({
+    const response = await artworkStore.getGalleryArtworks({
       page: page.value,
       sources: selectedSources.value,
       sort_by: sortBy.value
     })
+    
+    // Handle new optimized response format
+    const newArtworks = response.artworks || response
+    const hasMoreFromResponse = response.has_more !== undefined ? response.has_more : true
     
     if (newArtworks && newArtworks.length > 0) {
       // Add unique artworks only
@@ -209,6 +331,8 @@ const loadMoreArtworks = async () => {
       if (uniqueNewArtworks.length > 0) {
         artworks.value.push(...uniqueNewArtworks)
         page.value++
+        // Use server-provided has_more if available
+        hasMore.value = hasMoreFromResponse && newArtworks.length === 12
       } else {
         // If all artworks are duplicates, try next page
         page.value++
@@ -301,6 +425,56 @@ const getSourceDisplayName = (source) => {
     'harvard': 'Harvard Art Museums'
   }
   return displayNames[source] || source
+}
+
+// Filter methods
+const toggleSourceFilter = (source) => {
+  if (source === 'all') {
+    selectedSources.value = ['all']
+  } else {
+    // Remove 'all' if it exists
+    if (selectedSources.value.includes('all')) {
+      selectedSources.value = []
+    }
+    
+    // Toggle the specific source
+    const index = selectedSources.value.indexOf(source)
+    if (index > -1) {
+      selectedSources.value.splice(index, 1)
+      // If no sources selected, default back to 'all'
+      if (selectedSources.value.length === 0) {
+        selectedSources.value = ['all']
+      }
+    } else {
+      selectedSources.value.push(source)
+    }
+  }
+  
+  // Reset and reload artworks
+  resetAndReload()
+}
+
+const setSortBy = (sort) => {
+  sortBy.value = sort
+  resetAndReload()
+}
+
+const clearFilters = () => {
+  selectedSources.value = ['all']
+  sortBy.value = 'random'
+  resetAndReload()
+}
+
+const resetAndReload = () => {
+  artworks.value = []
+  page.value = 1
+  hasMore.value = true
+  loading.value = true
+  
+  // Add a small delay for smooth transition
+  setTimeout(() => {
+    loadMoreArtworks()
+  }, 100)
 }
 
 // Setup intersection observer for infinite scrolling
@@ -465,6 +639,22 @@ onUnmounted(() => {
   .btn-secondary {
     @apply px-4 py-2;
   }
+}
+
+/* Filter panel transitions */
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-down-enter-from {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.slide-down-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }
 
 /* Mobile-specific improvements */

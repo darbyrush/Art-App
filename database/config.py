@@ -66,17 +66,19 @@ if DATABASE_URL.startswith("sqlite"):
         echo=False
     )
 else:
-    # PostgreSQL configuration for production
+    # PostgreSQL configuration for production - optimized
     engine = create_engine(
         DATABASE_URL,
         pool_pre_ping=True,
-        pool_recycle=300,
-        pool_size=10,
-        max_overflow=20,
+        pool_recycle=300,  # Recycle connections every 5 minutes
+        pool_size=5,       # Reduced pool size for Railway limits
+        max_overflow=10,   # Reduced overflow
+        pool_timeout=30,   # Connection timeout
         echo=False,
         connect_args={
             "connect_timeout": 10,
-            "application_name": "art_app"
+            "application_name": "art_app",
+            "options": "-c timezone=UTC"
         }
     )
 
