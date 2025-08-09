@@ -92,8 +92,29 @@ export const apiClient = {
     return response.data
   },
 
-  async getLikedArtworks() {
-    const response = await api.get('/users/me/likes')
+  async getLikedArtworks(params = {}) {
+    const { page = 1, sources, artist, dateFrom, dateTo, sortBy = 'date_liked', limit = 50 } = params
+    const queryParams = { page, sort_by: sortBy, limit }
+    
+    if (sources && sources.length > 0) {
+      queryParams.sources = sources.join(',')
+    }
+    if (artist) {
+      queryParams.artist = artist
+    }
+    if (dateFrom) {
+      queryParams.date_from = dateFrom
+    }
+    if (dateTo) {
+      queryParams.date_to = dateTo
+    }
+    
+    const response = await api.get('/users/me/likes', { params: queryParams })
+    return response.data
+  },
+
+  async getLikedArtworksFilterOptions() {
+    const response = await api.get('/users/me/likes/filter-options')
     return response.data
   },
 

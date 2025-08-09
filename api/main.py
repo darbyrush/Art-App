@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from datetime import datetime, timedelta
 from typing import List, Optional
 import base64
@@ -351,17 +352,99 @@ def add_note(
 
 @app.get("/users/me/likes", response_model=List[ArtworkResponse])
 def get_user_likes(
+    sources: Optional[str] = None,
+    artist: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    sort_by: str = "date_liked",
+    page: int = 1,
+    limit: int = 50,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get all artworks liked by current user"""
+    """Get all artworks liked by current user with filtering and sorting"""
     try:
-        return user_like_service.get_user_likes(db, current_user.id)
+        source_list = sources.split(",") if sources else ["all"]
+        skip = (page - 1) * limit
+        
+        artworks = user_like_service.get_user_likes(
+            db, 
+            current_user.id, 
+            source_list, 
+            artist, 
+            date_from, 
+            date_to, 
+            sort_by, 
+            skip, 
+            limit
+        )
+        
+        return [ArtworkResponse.model_validate(artwork) for artwork in artworks]
     except Exception as e:
         logger.error(f"Error getting user likes: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching liked artworks: {str(e)}"
+        )
+
+@app.get("/users/me/likes/filter-options")
+def get_user_likes_filter_options(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get available filter options for user's liked artworks"""
+    try:
+        # Get distinct artists from user's liked artworks
+        artists = db.query(Artwork.artist).join(UserLike).filter(
+            UserLike.user_id == current_user.id,
+            UserLike.liked == True,
+            Artwork.artist.isnot(None),
+            Artwork.artist != ""
+        ).distinct().order_by(Artwork.artist).all()
+        
+        # Get distinct sources
+        sources = db.query(Artwork.source).join(UserLike).filter(
+            UserLike.user_id == current_user.id,
+            UserLike.liked == True
+        ).distinct().order_by(Artwork.source).all()
+        
+        # Get date range
+        date_range = db.query(
+            func.min(Artwork.date).label('min_date'),
+            func.max(Artwork.date).label('max_date')
+        ).join(UserLike).filter(
+            UserLike.user_id == current_user.id,
+            UserLike.liked == True,
+            Artwork.date.isnot(None)
+        ).first()
+        
+        # Get artwork count for stats
+        total_count = db.query(UserLike).filter(
+            UserLike.user_id == current_user.id,
+            UserLike.liked == True
+        ).count()
+        
+        return {
+            "artists": [artist[0] for artist in artists if artist[0]],
+            "sources": [source[0] for source in sources if source[0]],
+            "date_range": {
+                "min": date_range.min_date if date_range and date_range.min_date else None,
+                "max": date_range.max_date if date_range and date_range.max_date else None
+            },
+            "total_count": total_count,
+            "sort_options": [
+                {"value": "date_liked", "label": "Recently Liked"},
+                {"value": "title", "label": "Title (A-Z)"},
+                {"value": "artist", "label": "Artist (A-Z)"},
+                {"value": "date", "label": "Date Created"},
+                {"value": "source", "label": "Museum/Source"}
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error getting filter options: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching filter options: {str(e)}"
         )
 
 @app.get("/users/me/stats")

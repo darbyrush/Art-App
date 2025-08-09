@@ -51,23 +51,53 @@
 
         <!-- Stats -->
         <div class="card p-6 mb-6">
-          <h2 class="text-xl font-semibold mb-4">Your Stats</h2>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold">Your Art Journey</h2>
+            <button 
+              @click="loadStats" 
+              :disabled="loading"
+              class="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50 transition-colors"
+            >
+              {{ loading ? '⏳ Loading...' : '🔄 Refresh' }}
+            </button>
+          </div>
+          
+          <!-- Error State -->
+          <div v-if="error" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+            <div class="flex items-center">
+              <span class="text-red-600 text-sm">⚠️ {{ error }}</span>
+            </div>
+          </div>
+          
+          <!-- Loading State -->
+          <div v-if="loading" class="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div v-for="i in 5" :key="i" class="text-center">
+              <div class="text-3xl font-bold text-gray-300 animate-pulse">---</div>
+              <div class="text-sm text-gray-400">Loading...</div>
+            </div>
+          </div>
+          
+          <!-- Stats Content -->
+          <div v-else class="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div class="text-center">
               <div class="text-3xl font-bold text-primary-600">{{ stats.liked_artworks || 0 }}</div>
-              <div class="text-sm text-gray-500">Liked Artworks</div>
+              <div class="text-sm text-gray-500">❤️ Liked Artworks</div>
             </div>
             <div class="text-center">
               <div class="text-3xl font-bold text-primary-600">{{ stats.unique_museums || 0 }}</div>
-              <div class="text-sm text-gray-500">Museums Visited</div>
+              <div class="text-sm text-gray-500">🏛️ Museums Explored</div>
             </div>
             <div class="text-center">
               <div class="text-3xl font-bold text-primary-600">{{ stats.total_ratings || 0 }}</div>
-              <div class="text-sm text-gray-500">Artworks Rated</div>
+              <div class="text-sm text-gray-500">⭐ Artworks Rated</div>
             </div>
             <div class="text-center">
               <div class="text-3xl font-bold text-primary-600">{{ stats.total_notes || 0 }}</div>
-              <div class="text-sm text-gray-500">Notes Added</div>
+              <div class="text-sm text-gray-500">📝 Notes Written</div>
+            </div>
+            <div class="text-center">
+              <div class="text-3xl font-bold text-primary-600">{{ stats.total_boards || 0 }}</div>
+              <div class="text-sm text-gray-500">📋 Boards Created</div>
             </div>
           </div>
         </div>
@@ -101,6 +131,8 @@ const artworkStore = useArtworkStore()
 
 const user = computed(() => authStore.user)
 const stats = ref({})
+const loading = ref(false)
+const error = ref(null)
 
 const logout = () => {
   authStore.logout()
@@ -118,9 +150,22 @@ const formatDate = (dateString) => {
 
 const loadStats = async () => {
   try {
+    loading.value = true
+    error.value = null
     stats.value = await artworkStore.getUserStats()
-  } catch (error) {
-    console.error('Error loading stats:', error)
+  } catch (err) {
+    console.error('Error loading stats:', err)
+    error.value = 'Failed to load user statistics'
+    // Provide default stats on error
+    stats.value = {
+      liked_artworks: 0,
+      unique_museums: 0,
+      total_ratings: 0,
+      total_notes: 0,
+      total_boards: 0
+    }
+  } finally {
+    loading.value = false
   }
 }
 

@@ -114,10 +114,23 @@ export const useBoardStore = defineStore('board', () => {
         await loadBoardArtworks(boardId)
       }
       
+      // Also reload user boards to update artwork counts
+      await loadUserBoards()
+      
       return result
     } catch (error) {
       console.error('Error adding artwork to board:', error)
-      throw error
+      
+      // Provide more specific error messages
+      if (error.response?.status === 401) {
+        throw new Error('You need to be logged in to add artworks to boards')
+      } else if (error.response?.status === 404) {
+        throw new Error('Board not found')
+      } else if (error.response?.status === 409) {
+        throw new Error('This artwork is already in the board')
+      } else {
+        throw new Error('Failed to add artwork to board. Please try again.')
+      }
     } finally {
       loading.value = false
     }

@@ -79,12 +79,22 @@ export const useArtworkStore = defineStore('artwork', () => {
     }
   }
 
-  const loadLikedArtworks = async () => {
+  const loadLikedArtworks = async (filters = {}) => {
     try {
-      const artworks = await apiClient.getLikedArtworks()
+      const artworks = await apiClient.getLikedArtworks(filters)
       likedArtworks.value = artworks
+      return artworks
     } catch (error) {
       console.error('Error loading liked artworks:', error)
+      throw error
+    }
+  }
+
+  const getLikedArtworksFilterOptions = async () => {
+    try {
+      return await apiClient.getLikedArtworksFilterOptions()
+    } catch (error) {
+      console.error('Error loading filter options:', error)
       throw error
     }
   }
@@ -152,6 +162,7 @@ export const useArtworkStore = defineStore('artwork', () => {
     rateArtwork,
     addNote,
     loadLikedArtworks,
+    getLikedArtworksFilterOptions,
     getUserStats,
     getArtworks,
     getGalleryArtworks,

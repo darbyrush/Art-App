@@ -45,6 +45,56 @@ class UserService:
             return None
         return user
 
+    def get_user_stats(self, db: Session, user_id: str) -> Dict:
+        """Get user statistics"""
+        try:
+            # Count liked artworks
+            liked_count = db.query(UserLike).filter(
+                UserLike.user_id == user_id,
+                UserLike.liked == True
+            ).count()
+            
+            # Count unique museums from liked artworks
+            unique_museums = db.query(Artwork.source).join(
+                UserLike, Artwork.id == UserLike.artwork_id
+            ).filter(
+                UserLike.user_id == user_id,
+                UserLike.liked == True
+            ).distinct().count()
+            
+            # Count total ratings
+            ratings_count = db.query(UserRating).filter(
+                UserRating.user_id == user_id
+            ).count()
+            
+            # Count total notes
+            notes_count = db.query(UserNote).filter(
+                UserNote.user_id == user_id
+            ).count()
+            
+            # Count user's boards
+            boards_count = db.query(Board).filter(
+                Board.user_id == user_id
+            ).count()
+            
+            return {
+                "liked_artworks": liked_count,
+                "unique_museums": unique_museums,
+                "total_ratings": ratings_count,
+                "total_notes": notes_count,
+                "total_boards": boards_count
+            }
+        except Exception as e:
+            logger.error(f"Error getting user stats: {e}")
+            # Return default stats on error
+            return {
+                "liked_artworks": 0,
+                "unique_museums": 0,
+                "total_ratings": 0,
+                "total_notes": 0,
+                "total_boards": 0
+            }
+
 class ArtworkService:
     def get_artworks(self, db: Session, sources: List[str] = None, skip: int = 0, limit: int = 100, sort_by: str = "random") -> List[Artwork]:
         """Get artworks with pagination, filtering, and sorting - optimized"""
@@ -117,12 +167,44 @@ class UserLikeService:
             logger.error(f"Error liking artwork: {e}")
             return False
 
-    def get_user_likes(self, db: Session, user_id: str) -> List[Artwork]:
-        """Get all artworks liked by user"""
-        return db.query(Artwork).join(UserLike).filter(
+    def get_user_likes(self, db: Session, user_id: str, sources: List[str] = None, 
+                      artist: str = None, date_from: str = None, date_to: str = None,
+                      sort_by: str = "date_liked", skip: int = 0, limit: int = 100) -> List[Artwork]:
+        """Get all artworks liked by user with filtering and sorting"""
+        query = db.query(Artwork).join(UserLike).filter(
             UserLike.user_id == user_id,
             UserLike.liked == True
-        ).all()
+        )
+        
+        # Apply source filtering
+        if sources and "all" not in sources:
+            query = query.filter(Artwork.source.in_(sources))
+        
+        # Apply artist filtering
+        if artist:
+            query = query.filter(Artwork.artist.ilike(f"%{artist}%"))
+        
+        # Apply date filtering
+        if date_from:
+            query = query.filter(Artwork.date >= date_from)
+        if date_to:
+            query = query.filter(Artwork.date <= date_to)
+        
+        # Apply sorting
+        if sort_by == "date_liked":
+            query = query.order_by(UserLike.created_at.desc())
+        elif sort_by == "title":
+            query = query.order_by(Artwork.title)
+        elif sort_by == "artist":
+            query = query.order_by(Artwork.artist)
+        elif sort_by == "date":
+            query = query.order_by(Artwork.date.desc())
+        elif sort_by == "source":
+            query = query.order_by(Artwork.source)
+        else:
+            query = query.order_by(UserLike.created_at.desc())
+        
+        return query.offset(skip).limit(limit).all()
 
 class UserRatingService:
     def rate_artwork(self, db: Session, user_id: str, artwork_id: str, rating: int) -> bool:
