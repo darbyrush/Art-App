@@ -2,7 +2,7 @@
 export const API_BASE_URL = 'http://localhost:8000'
 
 // Frontend Configuration
-export const FRONTEND_URL = 'http://localhost:3000'
+export const FRONTEND_URL = 'http://localhost:3001'
 
 // CORS Configuration
 export const CORS_ORIGINS = [

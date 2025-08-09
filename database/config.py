@@ -6,22 +6,38 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Database configuration - use SQLite for local development
-# For Railway deployment, use the provided PostgreSQL URL
-RAILWAY_DB_URL = "postgresql://postgres:VPzlvfYNNmRSpxWukjeUIuGDsSFHwKOc@postgres.railway.internal:5432/railway"
+# Database configuration
+# Use PostgreSQL if DATABASE_URL is provided (Railway or other), otherwise SQLite for local development
 
-# Check if we're in production (Railway) or local development
-is_production = os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("DATABASE_URL")
+# Check if we should use PostgreSQL
+use_postgres = (
+    os.getenv("DATABASE_URL") or 
+    os.getenv("POSTGRES_URL") or 
+    os.getenv("RAILWAY_DATABASE_URL") or
+    os.getenv("DEVELOPMENT_MODE", "true").lower() == "false"
+)
 
-if is_production:
-    # Use PostgreSQL in production
+if use_postgres:
+    # Use PostgreSQL (Railway or other PostgreSQL database)
     DATABASE_URL = (
         os.getenv("DATABASE_URL") or 
         os.getenv("POSTGRES_URL") or 
-        os.getenv("RAILWAY_DATABASE_URL") or 
-        RAILWAY_DB_URL or
-        "postgresql://darbyrush@localhost/art_explorer"
+        os.getenv("RAILWAY_DATABASE_URL")
     )
+    
+    if not DATABASE_URL:
+        # Build from individual components if available
+        host = os.getenv("POSTGRES_HOST", "localhost")
+        port = os.getenv("POSTGRES_PORT", "5432")
+        user = os.getenv("POSTGRES_USER", "postgres")
+        password = os.getenv("POSTGRES_PASSWORD", "")
+        database = os.getenv("POSTGRES_DB", "art_explorer")
+        
+        if password:
+            DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{database}"
+        else:
+            print("Warning: No PostgreSQL credentials found. Please set DATABASE_URL or POSTGRES_* environment variables.")
+            DATABASE_URL = "postgresql://postgres@localhost/art_explorer"
     
     # Handle Railway's PostgreSQL URL format
     if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
@@ -53,8 +69,10 @@ else:
     # PostgreSQL configuration for production
     engine = create_engine(
         DATABASE_URL,
-        poolclass=StaticPool,
         pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=10,
+        max_overflow=20,
         echo=False,
         connect_args={
             "connect_timeout": 10,
@@ -63,7 +81,12 @@ else:
     )
 
 # Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(
+    autocommit=False, 
+    autoflush=False, 
+    bind=engine,
+    expire_on_commit=False
+)
 
 def get_db():
     """Dependency to get database session"""

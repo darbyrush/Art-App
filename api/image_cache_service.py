@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime
 from sqlalchemy.orm import Session
 from database.models import ImageCache
-from database.config import get_db
+from database.config import get_db, SessionLocal
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,9 +20,11 @@ class ImageCacheService:
     
     async def download_and_cache_image(self, url: str, db: Session, source: str = None) -> ImageCache:
         """Download image and cache it in database"""
+        # Use a separate database session to avoid transaction conflicts
+        cache_db = SessionLocal()
         try:
             # Check if already cached
-            cached = await self.get_cached_image(url, db)
+            cached = await self.get_cached_image(url, cache_db)
             if cached and cached.is_valid:
                 return cached
             
@@ -62,9 +64,9 @@ class ImageCacheService:
                                 source=source,
                                 last_validated=datetime.utcnow()
                             )
-                            db.add(cached)
+                            cache_db.add(cached)
                         
-                        db.commit()
+                        cache_db.commit()
                         logger.info(f"Successfully cached image: {url}")
                         return cached
                     else:
@@ -81,41 +83,53 @@ class ImageCacheService:
                                 source=source,
                                 last_validated=datetime.utcnow()
                             )
-                            db.add(cached)
+                            cache_db.add(cached)
                         
-                        db.commit()
+                        cache_db.commit()
                         logger.warning(f"Failed to download image: {url} - HTTP {response.status}")
                         return cached
                         
         except Exception as e:
-            # Cache the error
-            if cached:
-                cached.is_valid = False
-                cached.error_message = str(e)
-                cached.last_validated = datetime.utcnow()
-            else:
-                cached = ImageCache(
-                    original_url=url,
-                    is_valid=False,
-                    error_message=str(e),
-                    source=source,
-                    last_validated=datetime.utcnow()
-                )
-                db.add(cached)
-            
-            db.commit()
-            logger.error(f"Error downloading image {url}: {e}")
-            return cached
+            try:
+                # Cache the error
+                if cached:
+                    cached.is_valid = False
+                    cached.error_message = str(e)
+                    cached.last_validated = datetime.utcnow()
+                else:
+                    cached = ImageCache(
+                        original_url=url,
+                        is_valid=False,
+                        error_message=str(e),
+                        source=source,
+                        last_validated=datetime.utcnow()
+                    )
+                    cache_db.add(cached)
+                
+                cache_db.commit()
+                logger.error(f"Error downloading image {url}: {e}")
+                return cached
+            except Exception as commit_error:
+                logger.error(f"Error caching failure for {url}: {commit_error}")
+                cache_db.rollback()
+                return None
+        finally:
+            cache_db.close()
     
     async def get_or_download_image(self, url: str, db: Session, source: str = None) -> ImageCache:
         """Get cached image or download and cache it"""
-        cached = await self.get_cached_image(url, db)
-        
-        if cached and cached.is_valid:
-            return cached
-        
-        # Download and cache
-        return await self.download_and_cache_image(url, db, source)
+        # Use separate session for cache operations
+        cache_db = SessionLocal()
+        try:
+            cached = await self.get_cached_image(url, cache_db)
+            
+            if cached and cached.is_valid:
+                return cached
+            
+            # Download and cache (this will create its own session)
+            return await self.download_and_cache_image(url, db, source)
+        finally:
+            cache_db.close()
     
     def get_image_data_url(self, image_cache: ImageCache) -> str:
         """Convert cached image data to data URL"""
