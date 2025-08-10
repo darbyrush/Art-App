@@ -1,10 +1,19 @@
 <template>
-  <div id="app" class="min-h-screen bg-art-cream">
-    <router-view />
+  <div id="app">
+    <AppHeader />
+    <ErrorBoundary>
+      <main class="min-h-screen bg-gray-50">
+        <router-view />
+      </main>
+    </ErrorBoundary>
+    <Toast />
   </div>
 </template>
 
 <script setup>
+import AppHeader from '@/components/AppHeader.vue'
+import Toast from '@/components/Toast.vue'
+import ErrorBoundary from '@/components/ErrorBoundary.vue'
 import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 

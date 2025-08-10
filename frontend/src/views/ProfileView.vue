@@ -21,21 +21,26 @@
           
           <div class="flex flex-col sm:flex-row gap-6">
             <!-- Profile Picture Section -->
-            <div class="flex flex-col items-center space-y-3">
-              <div class="relative group">
-                <div class="w-24 h-24 rounded-full overflow-hidden bg-gray-200 border-2 border-gray-300">
-                  <img 
-                    v-if="user?.profile_picture" 
-                    :src="getProfilePictureUrl(user.profile_picture)" 
-                    :alt="user.username"
-                    class="w-full h-full object-cover"
-                    @error="handleImageError"
-                    @load="handleImageLoad"
+            <div class="bg-white p-6 rounded-lg shadow-md">
+              <h3 class="text-lg font-semibold mb-4">Profile Picture</h3>
+              
+              <div class="flex items-center space-x-6">
+                <!-- Profile Picture Display -->
+                <div class="relative">
+                  <div v-if="uploading" class="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-full">
+                    <LoadingSkeleton type="avatar" size="xl" />
+                  </div>
+                  <img
+                    v-else-if="user?.profile_picture"
+                    :src="user.profile_picture"
+                    alt="Profile Picture"
+                    class="w-24 h-24 rounded-full object-cover border-4 border-gray-200"
+                  />
+                  <div
+                    v-else
+                    class="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center"
                   >
-                  <div v-else class="w-full h-full flex items-center justify-center text-gray-400">
-                    <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
-                    </svg>
+                    <span class="text-gray-500 text-2xl">👤</span>
                   </div>
                 </div>
                 
@@ -195,6 +200,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useArtworkStore } from '@/stores/artwork'
 import { apiClient } from '@/utils/apiClient'
 import AppHeader from '@/components/AppHeader.vue'
+import { useToast } from '@/composables/useToast'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -259,14 +266,14 @@ const handleFileUpload = async (event) => {
   
   // Validate file type
   if (!file.type.startsWith('image/')) {
-    showNotification('Please select an image file', 'error')
+    show('Please select an image file', 'error')
     return
   }
   
   // Validate file size (5MB limit)
   const maxSize = 5 * 1024 * 1024 // 5MB
   if (file.size > maxSize) {
-    showNotification('File size must be less than 5MB', 'error')
+    show('File size must be less than 5MB', 'error')
     return
   }
   
@@ -287,7 +294,7 @@ const handleFileUpload = async (event) => {
     clearInterval(progressInterval)
     uploadProgress.value = 100
     
-    showNotification('Profile picture uploaded successfully!', 'success')
+    show('Profile picture uploaded successfully!', 'success')
     
     // Reset progress after a delay
     setTimeout(() => {
@@ -296,7 +303,7 @@ const handleFileUpload = async (event) => {
     
   } catch (error) {
     console.error('Error uploading profile picture:', error)
-    showNotification('Failed to upload profile picture. Please try again.', 'error')
+    show('Failed to upload profile picture. Please try again.', 'error')
   } finally {
     uploading.value = false
     // Clear the file input
@@ -306,20 +313,20 @@ const handleFileUpload = async (event) => {
   }
 }
 
-const deleteProfilePicture = async () => {
+async function deleteProfilePicture() {
   if (!confirm('Are you sure you want to remove your profile picture?')) {
     return
   }
-  
+
   try {
     uploading.value = true
     // Use the auth store method instead of apiClient
     const result = await authStore.deleteProfilePicture()
     
-    showNotification('Profile picture removed successfully!', 'success')
+    show('Profile picture removed successfully!', 'success')
   } catch (error) {
     console.error('Error deleting profile picture:', error)
-    showNotification('Failed to remove profile picture. Please try again.', 'error')
+    show('Failed to remove profile picture. Please try again.', 'error')
   } finally {
     uploading.value = false
   }

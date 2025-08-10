@@ -1,81 +1,60 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-import ExhibitView from '@/views/ExhibitView.vue'
-import GalleryView from '@/views/GalleryView.vue'
-import LoginView from '@/views/LoginView.vue'
-import RegisterView from '@/views/RegisterView.vue'
-import ProfileView from '@/views/ProfileView.vue'
-import BoardsView from '@/views/BoardsView.vue'
-import BoardDetailView from '@/views/BoardDetailView.vue'
-
 const routes = [
   {
     path: '/',
-    name: 'exhibit',
-    component: ExhibitView,
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/gallery',
-    name: 'gallery',
-    component: GalleryView,
-    meta: { requiresAuth: true }
+    name: 'Gallery',
+    component: () => import('@/views/GalleryView.vue')
   },
   {
     path: '/boards',
-    name: 'boards',
-    component: BoardsView,
+    name: 'Boards',
+    component: () => import('@/views/BoardsView.vue'),
     meta: { requiresAuth: true }
   },
   {
     path: '/boards/:id',
-    name: 'board-detail',
-    component: BoardDetailView,
+    name: 'BoardDetail',
+    component: () => import('@/views/BoardDetailView.vue'),
     meta: { requiresAuth: true }
   },
   {
-    path: '/profile',
-    name: 'profile',
-    component: ProfileView,
-    meta: { requiresAuth: true }
+    path: '/exhibit',
+    name: 'Exhibit',
+    component: () => import('@/views/ExhibitView.vue')
   },
   {
     path: '/login',
-    name: 'login',
-    component: LoginView,
-    meta: { requiresGuest: true }
+    name: 'Login',
+    component: () => import('@/views/LoginView.vue')
   },
   {
     path: '/register',
-    name: 'register',
-    component: RegisterView,
-    meta: { requiresGuest: true }
+    name: 'Register',
+    component: () => import('@/views/RegisterView.vue')
+  },
+  {
+    path: '/profile',
+    name: 'Profile',
+    component: () => import('@/views/ProfileView.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHistory(),
   routes
 })
 
-// Navigation guard
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
   
-  // Check if route requires authentication
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
-    return
+  } else {
+    next()
   }
-  
-  // Check if route requires guest (not authenticated)
-  if (to.meta.requiresGuest && authStore.isAuthenticated) {
-    next('/')
-    return
-  }
-  
-  next()
 })
 
 export default router 
