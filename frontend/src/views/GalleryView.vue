@@ -1,28 +1,19 @@
 <template>
   <div class="min-h-screen bg-gray-50">
     <!-- Header -->
-    <header class="bg-white shadow-sm border-b sticky top-0 z-50">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center py-3 sm:py-4">
-          <div class="flex items-center space-x-2 sm:space-x-4">
-            <h1 class="text-lg sm:text-2xl font-serif font-bold text-gray-900">🖼️ Gallery</h1>
-            <nav class="flex space-x-2 sm:space-x-4">
-              <router-link to="/" class="text-sm sm:text-base text-gray-600 hover:text-gray-900 px-2 py-1 rounded">Exhibit</router-link>
-              <router-link to="/boards" class="text-sm sm:text-base text-gray-600 hover:text-gray-900 px-2 py-1 rounded">Boards</router-link>
-              <router-link to="/profile" class="text-sm sm:text-base text-gray-600 hover:text-gray-900 px-2 py-1 rounded">Profile</router-link>
-            </nav>
-          </div>
-          <div class="flex items-center space-x-2">
-            <button 
-              @click="showBoardModal = true"
-              class="btn-primary text-sm px-3 py-2"
-            >
-              Add to Board
-            </button>
-          </div>
-        </div>
-      </div>
-    </header>
+    <AppHeader>
+      <template #title>
+        <h1 class="text-lg sm:text-2xl font-serif font-bold text-gray-900">🖼️ Gallery</h1>
+      </template>
+      <template #actions>
+        <button 
+          @click="showBoardModal = true"
+          class="btn-primary text-sm px-3 py-2"
+        >
+          Add to Board
+        </button>
+      </template>
+    </AppHeader>
 
     <!-- Filters Section -->
     <div class="bg-white shadow-sm border-b">
@@ -198,43 +189,99 @@
       </div>
 
       <!-- Artworks Grid -->
-      <div v-else class="artworks-grid">
-        <div 
-          v-for="artwork in artworks"
-          :key="artwork.id"
-          class="artwork-card"
+      <div v-else class="artworks-container">
+        <!-- Use Virtual Scroller for large lists -->
+        <VirtualScroller
+          v-if="artworks.length > 50"
+          :items="artworks"
+          :item-height="320"
+          :container-height="600"
+          :overscan="10"
+          class="virtual-artworks-grid"
         >
-          <div class="artwork-image-container">
-            <img 
-              :src="getOptimizedImageUrl(artwork.image_url)"
-              :alt="artwork.title"
-              class="artwork-image"
-              @error="handleImageError"
-            >
-            <div class="artwork-overlay">
-              <div class="overlay-actions">
-                <button 
-                  @click="likeArtwork(artwork.id, false)"
-                  class="action-btn"
-                  title="Unlike artwork"
-                >
-                  ❌
-                </button>
-                <button 
-                  @click="addToBoard(artwork)"
-                  class="action-btn"
-                  title="Add to board"
-                >
-                  📋
-                </button>
+          <template #default="{ item: artwork }">
+            <div class="artwork-card-wrapper">
+              <div class="artwork-card">
+                <div class="artwork-image-container">
+                  <OptimizedImage
+                    :src="artwork.image_url"
+                    :alt="artwork.title"
+                    aspect-ratio="1"
+                    :lazy="true"
+                    :priority="'normal'"
+                    @error="handleImageError"
+                  />
+                  <div class="artwork-overlay">
+                    <div class="overlay-actions">
+                      <button 
+                        @click="likeArtwork(artwork.id, false)"
+                        class="action-btn"
+                        title="Unlike artwork"
+                      >
+                        ❌
+                      </button>
+                      <button 
+                        @click="addToBoard(artwork)"
+                        class="action-btn"
+                        title="Add to board"
+                      >
+                        📋
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="artwork-info">
+                  <h3 class="artwork-title">{{ artwork.title }}</h3>
+                  <p v-if="artwork.artist" class="artwork-artist">{{ artwork.artist }}</p>
+                  <p v-if="artwork.date" class="artwork-date">{{ artwork.date }}</p>
+                  <span class="artwork-source">{{ artwork.source }}</span>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="artwork-info">
-            <h3 class="artwork-title">{{ artwork.title }}</h3>
-            <p v-if="artwork.artist" class="artwork-artist">{{ artwork.artist }}</p>
-            <p v-if="artwork.date" class="artwork-date">{{ artwork.date }}</p>
-            <span class="artwork-source">{{ artwork.source }}</span>
+          </template>
+        </VirtualScroller>
+        
+        <!-- Regular grid for smaller lists -->
+        <div v-else class="artworks-grid">
+          <div 
+            v-for="artwork in artworks"
+            :key="artwork.id"
+            class="artwork-card"
+          >
+            <div class="artwork-image-container">
+              <OptimizedImage
+                :src="artwork.image_url"
+                :alt="artwork.title"
+                aspect-ratio="1"
+                :lazy="true"
+                :priority="'normal'"
+                @error="handleImageError"
+              />
+              <div class="artwork-overlay">
+                <div class="overlay-actions">
+                  <button 
+                    @click="likeArtwork(artwork.id, false)"
+                    class="action-btn"
+                    title="Unlike artwork"
+                  >
+                    ❌
+                  </button>
+                  <button 
+                    @click="addToBoard(artwork)"
+                    class="action-btn"
+                    title="Add to board"
+                  >
+                    📋
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="artwork-info">
+              <h3 class="artwork-title">{{ artwork.title }}</h3>
+              <p v-if="artwork.artist" class="artwork-artist">{{ artwork.artist }}</p>
+              <p v-if="artwork.date" class="artwork-date">{{ artwork.date }}</p>
+              <span class="artwork-source">{{ artwork.source }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -425,6 +472,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useArtworkStore } from '@/stores/artwork'
 import { useBoardStore } from '@/stores/board'
 import { getOptimizedImageUrl } from '@/utils/imageUtils'
+import AppHeader from '@/components/AppHeader.vue'
+import VirtualScroller from '@/components/VirtualScroller.vue'
+import OptimizedImage from '@/components/OptimizedImage.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -859,6 +909,18 @@ onMounted(() => {
   gap: 20px;
 }
 
+.artworks-container {
+  width: 100%;
+}
+
+.virtual-artworks-grid {
+  width: 100%;
+}
+
+.artwork-card-wrapper {
+  padding: 10px;
+}
+
 .artwork-card {
   background: white;
   border-radius: 12px;
@@ -940,7 +1002,7 @@ onMounted(() => {
 }
 
 .artwork-artist {
-  color: #6b7280;
+  color: #6c757d;
   font-size: 14px;
   margin-bottom: 2px;
 }
@@ -954,7 +1016,7 @@ onMounted(() => {
 .artwork-source {
   display: inline-block;
   background: #f3f4f6;
-  color: #6b7280;
+  color: #6c757d;
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 11px;

@@ -3,7 +3,7 @@ from typing import List, Optional, Dict
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, text
 from database.models import User, Artwork, UserLike, UserRating, UserNote, Board, BoardArtwork, ImageCache
-from api.schemas import UserCreate, UserResponse, ArtworkResponse, BoardCreate, BoardUpdate, BoardResponse, BoardArtworkCreate, BoardArtworkResponse
+from api.schemas import UserCreate, UserResponse, UserUpdate, ArtworkResponse, BoardCreate, BoardUpdate, BoardResponse, BoardArtworkCreate, BoardArtworkResponse
 from api.auth import get_password_hash, verify_password
 from api.cache import cache_user_by_username, cache_artwork_by_id, invalidate_user_cache, invalidate_artwork_cache
 from datetime import datetime, timedelta
@@ -44,6 +44,45 @@ class UserService:
         if not verify_password(password, user.hashed_password):
             return None
         return user
+
+    def update_user(self, db: Session, user_id: str, user_update: UserUpdate) -> UserResponse:
+        """Update user information"""
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                raise ValueError("User not found")
+            
+            # Update only provided fields
+            if user_update.username is not None:
+                # Check if username is already taken
+                existing_user = db.query(User).filter(
+                    User.username == user_update.username,
+                    User.id != user_id
+                ).first()
+                if existing_user:
+                    raise ValueError("Username already taken")
+                user.username = user_update.username
+            
+            if user_update.email is not None:
+                # Check if email is already taken
+                existing_user = db.query(User).filter(
+                    User.email == user_update.email,
+                    User.id != user_id
+                ).first()
+                if existing_user:
+                    raise ValueError("Email already taken")
+                user.email = user_update.email
+            
+            if user_update.profile_picture is not None:
+                user.profile_picture = user_update.profile_picture
+            
+            db.commit()
+            db.refresh(user)
+            return UserResponse.model_validate(user)
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error updating user: {e}")
+            raise
 
     def get_user_stats(self, db: Session, user_id: str) -> Dict:
         """Get user statistics"""

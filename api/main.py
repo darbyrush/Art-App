@@ -1,8 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, FileResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timedelta
@@ -23,7 +24,7 @@ from database.config import get_db, init_db
 from database.models import User, Artwork, UserLike, UserRating, UserNote, ImageCache
 from api.image_cache_service import image_cache_service
 from api.schemas import (
-    UserCreate, UserResponse, ArtworkResponse, UserLikeCreate, 
+    UserCreate, UserResponse, UserUpdate, ArtworkResponse, UserLikeCreate, 
     UserRatingCreate, UserNoteCreate, Token, TokenData,
     BoardCreate, BoardUpdate, BoardResponse, BoardArtworkCreate
 )
@@ -53,6 +54,17 @@ except Exception as e:
     print(f"Warning: Could not start background scheduler: {e}")
 
 app = FastAPI(title="Art Explorer API", version="1.0.0")
+
+@app.on_event("startup")
+async def startup_event():
+    """Ensure uploads directory exists on startup"""
+    import os
+    uploads_dir = "uploads/profile_pictures"
+    os.makedirs(uploads_dir, exist_ok=True)
+    print(f"Uploads directory ensured: {uploads_dir}")
+
+# Mount static files for serving uploaded profile pictures
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Import CORS configuration
 from api.cors_config import get_cors_origins, DynamicCORSMiddleware
@@ -270,6 +282,128 @@ def read_users_me(current_user: User = Depends(get_current_user)):
     """Get current user information"""
     return current_user
 
+@app.get("/users/me/profile-picture")
+def get_profile_picture(current_user: User = Depends(get_current_user)):
+    """Get current user's profile picture"""
+    if not current_user.profile_picture:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No profile picture found"
+        )
+    
+    # Extract filename from the profile picture URL
+    filename = current_user.profile_picture.split('/')[-1]
+    filepath = f"uploads/profile_pictures/{filename}"
+    
+    if not os.path.exists(filepath):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile picture file not found"
+        )
+    
+    return FileResponse(filepath)
+
+@app.get("/users/{user_id}/profile-picture")
+def get_user_profile_picture(user_id: str, db: Session = Depends(get_db)):
+    """Get a user's profile picture by user ID (public endpoint)"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    if not user.profile_picture:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No profile picture found"
+        )
+    
+    # Extract filename from the profile picture URL
+    filename = user.profile_picture.split('/')[-1]
+    filepath = f"uploads/profile_pictures/{filename}"
+    
+    if not os.path.exists(filepath):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile picture file not found"
+        )
+    
+    return FileResponse(filepath)
+
+@app.get("/users/me/profile-picture/info")
+def get_profile_picture_info(current_user: User = Depends(get_current_user)):
+    """Get current user's profile picture information"""
+    if not current_user.profile_picture:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No profile picture found"
+        )
+    
+    # Extract filename from the profile picture URL
+    filename = current_user.profile_picture.split('/')[-1]
+    filepath = f"uploads/profile_pictures/{filename}"
+    
+    if not os.path.exists(filepath):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile picture file not found"
+        )
+    
+    # Get file information
+    import os
+    stat = os.stat(filepath)
+    
+    return {
+        "filename": filename,
+        "url": current_user.profile_picture,
+        "size_bytes": stat.st_size,
+        "size_mb": round(stat.st_size / (1024 * 1024), 2),
+        "created_at": datetime.fromtimestamp(stat.st_ctime),
+        "modified_at": datetime.fromtimestamp(stat.st_mtime)
+    }
+
+@app.get("/users/me/profile-picture/thumbnail")
+def get_profile_picture_thumbnail(
+    size: int = 100,
+    current_user: User = Depends(get_current_user)
+):
+    """Get current user's profile picture as a thumbnail"""
+    if not current_user.profile_picture:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No profile picture found"
+        )
+    
+    # Extract filename from the profile picture URL
+    filename = current_user.profile_picture.split('/')[-1]
+    filepath = f"uploads/profile_pictures/{filename}"
+    
+    if not os.path.exists(filepath):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile picture file not found"
+        )
+    
+    try:
+        from PIL import Image
+        from fastapi.responses import Response
+        
+        # Open and resize image
+        image = Image.open(filepath)
+        image.thumbnail((size, size), Image.Resampling.LANCZOS)
+        
+        # Convert to bytes
+        img_byte_arr = BytesIO()
+        image.save(img_byte_arr, format='JPEG', quality=85)
+        img_byte_arr.seek(0)
+        
+        return Response(content=img_byte_arr.getvalue(), media_type="image/jpeg")
+    except Exception as e:
+        logger.error(f"Error generating thumbnail: {e}")
+        # Return original image if thumbnail generation fails
+        return FileResponse(filepath)
+
 @app.get("/artworks/random", response_model=ArtworkResponse)
 def get_random_artwork(
     sources: Optional[str] = None,
@@ -445,6 +579,191 @@ def get_user_likes_filter_options(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching filter options: {str(e)}"
+        )
+
+@app.post("/users/me/profile-picture")
+async def upload_profile_picture(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Upload a profile picture for the current user"""
+    import os
+    import uuid
+    import re
+    from io import BytesIO
+    
+    try:
+        # Validate file type
+        if not file.content_type or not file.content_type.startswith("image/"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be an image"
+            )
+        
+        # Validate file extension
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+        file_extension = os.path.splitext(file.filename)[1].lower() if file.filename else ''
+        if file_extension not in allowed_extensions:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File type not allowed. Allowed types: {', '.join(allowed_extensions)}"
+            )
+        
+        # Validate file size (5MB limit)
+        max_size = 5 * 1024 * 1024  # 5MB
+        file_content = await file.read()
+        if len(file_content) > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File size must be less than 5MB"
+            )
+        
+        # Validate that the file is actually an image by trying to open it
+        try:
+            from PIL import Image
+            image = Image.open(BytesIO(file_content))
+            
+            # Check image dimensions
+            if image.width < 10 or image.height < 10:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Image dimensions too small (minimum 10x10 pixels)"
+                )
+            
+            if image.width > 5000 or image.height > 5000:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Image dimensions too large (maximum 5000x5000 pixels)"
+                )
+            
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid image file: {str(e)}"
+            )
+        
+        # Generate unique filename
+        # Sanitize filename to prevent directory traversal
+        safe_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', file.filename or '')
+        file_extension = os.path.splitext(safe_filename)[1].lower()
+        
+        # Ensure we have a valid extension
+        if not file_extension or file_extension not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+            file_extension = '.jpg'
+        
+        filename = f"{current_user.id}_{uuid.uuid4().hex}{file_extension}"
+        
+        # Ensure uploads directory exists
+        uploads_dir = "uploads/profile_pictures"
+        os.makedirs(uploads_dir, exist_ok=True)
+        
+        filepath = f"{uploads_dir}/{filename}"
+        
+        # Resize image if it's too large (max 800x800)
+        try:
+            # Create a new image object from the bytes
+            image = Image.open(BytesIO(file_content))
+            
+            # Convert to RGB if necessary
+            if image.mode in ('RGBA', 'LA', 'P'):
+                image = image.convert('RGB')
+            
+            # Resize if image is too large
+            max_dimension = 800
+            if image.width > max_dimension or image.height > max_dimension:
+                image.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+            
+            # Save optimized image
+            with open(filepath, "wb") as f:
+                image.save(f, format='JPEG', quality=85, optimize=True)
+        except Exception as e:
+            logger.warning(f"Could not optimize image, saving original: {e}")
+            # Fallback to saving original if optimization fails
+            with open(filepath, "wb") as f:
+                f.write(file_content)
+        
+        # Delete old profile picture if it exists
+        if current_user.profile_picture:
+            try:
+                old_filename = current_user.profile_picture.split('/')[-1]
+                old_filepath = f"uploads/profile_pictures/{old_filename}"
+                if os.path.exists(old_filepath) and old_filepath != filepath:
+                    os.remove(old_filepath)
+                    logger.info(f"Deleted old profile picture: {old_filepath}")
+            except Exception as e:
+                logger.warning(f"Could not delete old profile picture: {e}")
+        
+        # Log the upload
+        logger.info(f"Profile picture uploaded for user {current_user.id}: {filepath}")
+        
+        # Update user's profile picture URL
+        profile_picture_url = f"/uploads/profile_pictures/{filename}"
+        user_update = UserUpdate(profile_picture=profile_picture_url)
+        updated_user = user_service.update_user(db, current_user.id, user_update)
+        
+        return {
+            "message": "Profile picture uploaded successfully",
+            "profile_picture_url": profile_picture_url,
+            "user": updated_user
+        }
+    except Exception as e:
+        logger.error(f"Error uploading profile picture: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error uploading profile picture: {str(e)}"
+        )
+
+@app.put("/users/me", response_model=UserResponse)
+def update_current_user(
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update current user's information"""
+    try:
+        return user_service.update_user(db, current_user.id, user_update)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error updating user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating user: {str(e)}"
+        )
+
+@app.delete("/users/me/profile-picture")
+def delete_profile_picture(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete current user's profile picture"""
+    try:
+        # Remove the profile picture file if it exists
+        if current_user.profile_picture:
+            import os
+            # Extract filename from the profile picture URL
+            filename = current_user.profile_picture.split('/')[-1]
+            filepath = f"uploads/profile_pictures/{filename}"
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        
+        # Update user to remove profile picture URL
+        user_update = UserUpdate(profile_picture=None)
+        updated_user = user_service.update_user(db, current_user.id, user_update)
+        
+        return {
+            "message": "Profile picture deleted successfully",
+            "user": updated_user
+        }
+    except Exception as e:
+        logger.error(f"Error deleting profile picture: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting profile picture: {str(e)}"
         )
 
 @app.get("/users/me/stats")

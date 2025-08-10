@@ -12,6 +12,7 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(100), unique=True, nullable=True)
     hashed_password = Column(String(255), nullable=False)
+    profile_picture = Column(String(500), nullable=True)  # URL to profile picture
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
     

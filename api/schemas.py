@@ -11,11 +11,17 @@ class UserResponse(BaseModel):
     id: str
     username: str
     email: Optional[str] = None
+    profile_picture: Optional[str] = None
     created_at: datetime
     is_active: bool
     
     class Config:
         from_attributes = True
+
+class UserUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    profile_picture: Optional[str] = None
 
 class ArtworkResponse(BaseModel):
     id: str

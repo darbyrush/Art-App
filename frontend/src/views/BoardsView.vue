@@ -1,26 +1,19 @@
 <template>
   <div class="min-h-screen bg-gray-50">
     <!-- Header -->
-    <header class="bg-white shadow-sm border-b sticky top-0 z-50">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center py-3 sm:py-4">
-          <div class="flex items-center space-x-2 sm:space-x-4">
-            <h1 class="text-lg sm:text-2xl font-serif font-bold text-gray-900">📋 Boards</h1>
-            <nav class="flex space-x-2 sm:space-x-4">
-              <router-link to="/" class="text-sm sm:text-base text-gray-600 hover:text-gray-900 px-2 py-1 rounded">Exhibit</router-link>
-              <router-link to="/gallery" class="text-sm sm:text-base text-gray-600 hover:text-gray-900 px-2 py-1 rounded">Gallery</router-link>
-              <router-link to="/profile" class="text-sm sm:text-base text-gray-600 hover:text-gray-900 px-2 py-1 rounded">Profile</router-link>
-            </nav>
-          </div>
-          <button 
-            @click="showCreateModal = true"
-            class="btn-primary text-sm sm:text-base px-3 py-2"
-          >
-            + New Board
-          </button>
-        </div>
-      </div>
-    </header>
+    <AppHeader>
+      <template #title>
+        <h1 class="text-lg sm:text-2xl font-serif font-bold text-gray-900">📋 Boards</h1>
+      </template>
+      <template #actions>
+        <button 
+          @click="showCreateModal = true"
+          class="btn-primary text-sm sm:text-base px-3 py-2"
+        >
+          + New Board
+        </button>
+      </template>
+    </AppHeader>
 
     <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -205,6 +198,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useBoardStore } from '@/stores/board'
+import AppHeader from '@/components/AppHeader.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()

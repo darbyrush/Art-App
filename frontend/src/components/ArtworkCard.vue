@@ -1,208 +1,156 @@
 <template>
-  <div class="artwork-card bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
-    <!-- Image Container -->
-    <div class="relative aspect-square overflow-hidden">
-      <!-- Loading State -->
-      <div v-if="imageState.state === 'loading'" class="absolute inset-0 flex items-center justify-center bg-gray-100">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-      </div>
+  <div 
+    class="card overflow-hidden hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer group"
+    @click="handleCardClick"
+  >
+    <!-- Image Container with Optimized Loading -->
+    <div class="relative aspect-[4/3] bg-gray-100 overflow-hidden">
+      <OptimizedImage
+        :src="artwork.image_url"
+        :alt="artwork.title || 'Artwork'"
+        aspect-ratio="4/3"
+        :lazy="true"
+        :priority="showFavoriteButton ? 'high' : 'normal'"
+        :show-progress="false"
+        @click="handleCardClick"
+      />
       
-      <!-- Error State -->
-      <div v-else-if="imageState.state === 'error'" class="absolute inset-0 flex items-center justify-center bg-gray-100">
-        <div class="text-center">
-          <div class="text-4xl mb-2">🖼️</div>
-          <p class="text-sm text-gray-500">Image unavailable</p>
-        </div>
-      </div>
-      
-      <!-- Image -->
-      <img
-        v-show="imageState.state === 'loaded' || imageState.state === 'fallback'"
-        :src="imageState.url"
-        :alt="artwork.title"
-        class="w-full h-full object-cover transition-opacity duration-300"
-        :class="{ 'opacity-0': imageState.state === 'loading' }"
-        @load="handleImageLoad"
-        @error="handleImageError"
-        @click="$emit('click', artwork)"
-      >
-      
-      <!-- Optimization Badge -->
-      <div v-if="imageState.optimized && imageState.state === 'loaded'" 
-           class="absolute top-2 left-2 px-2 py-1 bg-green-500 text-white text-xs rounded-full opacity-75">
-        ⚡
-      </div>
-      
-      <!-- Fallback Badge -->
-      <div v-if="imageState.state === 'fallback'" 
-           class="absolute top-2 left-2 px-2 py-1 bg-yellow-500 text-white text-xs rounded-full opacity-75">
-        🖼️
-      </div>
-      
-      <!-- Like Button Overlay -->
+      <!-- Favorite Button -->
       <button
-        v-if="showLikeButton"
-        @click.stop="toggleLike"
-        class="absolute top-2 right-2 p-2 bg-white bg-opacity-80 rounded-full hover:bg-opacity-100 transition-all duration-200"
-        :class="{ 'text-red-500': isLiked }"
+        v-if="showFavoriteButton"
+        @click.stop="toggleFavorite"
+        class="absolute top-2 right-2 p-2 bg-white/80 backdrop-blur-sm rounded-full shadow-md hover:bg-white transition-all duration-200 z-10"
+        :class="{ 'bg-red-100': isFavorited }"
       >
-        <span class="text-lg">{{ isLiked ? '❤️' : '🤍' }}</span>
+        <svg 
+          class="w-4 h-4 transition-colors duration-200" 
+          :class="isFavorited ? 'text-red-500 fill-current' : 'text-gray-600'"
+          fill="currentColor" 
+          viewBox="0 0 20 20"
+        >
+          <path 
+            v-if="isFavorited"
+            fill-rule="evenodd" 
+            d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" 
+            clip-rule="evenodd" 
+          />
+          <path 
+            v-else
+            d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" 
+          />
+        </svg>
       </button>
     </div>
-    
-    <!-- Artwork Info -->
+
+    <!-- Content -->
     <div class="p-4">
-      <h3 class="font-serif font-bold text-lg mb-1 line-clamp-2">{{ artwork.title }}</h3>
-      <p class="text-gray-600 text-sm mb-2 line-clamp-1">by {{ artwork.artist }}</p>
-      <div class="text-xs text-gray-500 mb-3">
-        📅 {{ artwork.date }} • 🌍 {{ artwork.origin }}
-      </div>
+      <!-- Title -->
+      <h3 class="font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+        {{ artwork.title || 'Untitled' }}
+      </h3>
       
-      <!-- Source Badge -->
-      <div class="flex items-center justify-between">
-        <span class="inline-block px-2 py-1 text-xs bg-primary-100 text-primary-800 rounded-full">
-          {{ getSourceDisplayName(artwork.source) }}
-        </span>
-        
-        <!-- Rating Display -->
-        <div v-if="artwork.rating" class="flex items-center">
-          <span class="text-yellow-400 text-sm">⭐</span>
-          <span class="text-xs text-gray-600 ml-1">{{ artwork.rating }}/5</span>
-        </div>
-      </div>
+      <!-- Artist -->
+      <p v-if="artwork.artist" class="text-sm text-gray-600 mb-2 line-clamp-1">
+        by {{ artwork.artist }}
+      </p>
+      
+      <!-- Museum/Collection -->
+      <p v-if="artwork.museum" class="text-xs text-gray-500 mb-2 line-clamp-1">
+        {{ artwork.museum }}
+      </p>
+      
+      <!-- Year -->
+      <p v-if="artwork.year" class="text-xs text-gray-500">
+        {{ artwork.year }}
+      </p>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { 
-  getOptimizedImageUrl, 
-  getFallbackImageUrl, 
-  loadImageWithFallback,
-  IMAGE_STATES 
-} from '@/utils/imageUtils'
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { useArtworkStore } from '@/stores/artwork'
+import OptimizedImage from './OptimizedImage.vue'
 
 const props = defineProps({
   artwork: {
     type: Object,
     required: true
   },
-  showLikeButton: {
+  showFavoriteButton: {
     type: Boolean,
     default: true
-  },
-  isLiked: {
-    type: Boolean,
-    default: false
   }
 })
 
-const emit = defineEmits(['click', 'like', 'unlike'])
+const emit = defineEmits(['click', 'favorite-toggle'])
 
-const imageState = ref({
-  state: IMAGE_STATES.LOADING,
-  url: null,
-  error: null,
-  optimized: false
+const router = useRouter()
+const artworkStore = useArtworkStore()
+
+// Computed properties
+const isFavorited = computed(() => {
+  return artworkStore.isFavorited(props.artwork.id)
 })
 
-const handleImageLoad = () => {
-  imageState.value.state = IMAGE_STATES.LOADED
-}
-
-const handleImageError = async () => {
-  // Try progressive loading with fallback
-  try {
-    const result = await loadImageWithFallback(
-      props.artwork.image_url, 
-      props.artwork.source, 
-      'gallery'
-    )
-    
-    imageState.value = result
-    
-    if (result.state === IMAGE_STATES.ERROR) {
-      console.warn('All image loading strategies failed for:', props.artwork.title)
-    }
-  } catch (error) {
-    console.error('Error in progressive image loading:', error)
-    imageState.value.state = IMAGE_STATES.ERROR
-    imageState.value.error = error.message
+// Methods
+const handleCardClick = () => {
+  emit('click', props.artwork)
+  // Navigate to artwork detail if available
+  if (props.artwork.id) {
+    router.push(`/artwork/${props.artwork.id}`)
   }
 }
 
-const toggleLike = () => {
-  if (props.isLiked) {
-    emit('unlike', props.artwork.id)
-  } else {
-    emit('like', props.artwork.id)
-  }
-}
-
-const getSourceDisplayName = (source) => {
-  const displayNames = {
-    'cleveland': 'Cleveland',
-    'met': 'Met',
-    'chicago': 'Chicago',
-    'walters': 'Walters',
-    'national_gallery': 'NGA',
-    'smithsonian': 'Smithsonian',
-    'harvard': 'Harvard'
-  }
-  return displayNames[source] || source
-}
-
-// Initialize image loading
-const initializeImage = async () => {
-  if (!props.artwork.image_url) {
-    imageState.value = {
-      state: IMAGE_STATES.FALLBACK,
-      url: getFallbackImageUrl(props.artwork.source),
-      error: null,
-      optimized: false
-    }
-    return
-  }
+const toggleFavorite = async (event) => {
+  event.stopPropagation()
   
-  // Start with optimized URL
-  imageState.value = {
-    state: IMAGE_STATES.LOADING,
-    url: getOptimizedImageUrl(props.artwork.image_url, 'gallery'),
-    error: null,
-    optimized: true
+  try {
+    if (isFavorited.value) {
+      await artworkStore.removeFavorite(props.artwork.id)
+    } else {
+      await artworkStore.addFavorite(props.artwork.id)
+    }
+    emit('favorite-toggle', props.artwork, !isFavorited.value)
+  } catch (error) {
+    console.error('Error toggling favorite:', error)
   }
 }
-
-// Watch for artwork changes
-watch(() => props.artwork, initializeImage, { immediate: true })
-
-// Lifecycle
-onMounted(() => {
-  initializeImage()
-})
 </script>
 
 <style scoped>
+/* Line clamping utilities */
 .line-clamp-1 {
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
   overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
 }
 
 .line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
-.artwork-card {
-  cursor: pointer;
+/* Smooth transitions */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
 }
 
-.artwork-card:hover {
-  transform: translateY(-2px);
+.transition-colors {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.transition-transform {
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
 }
 </style> 

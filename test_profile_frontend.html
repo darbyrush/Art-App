@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile Photo Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            border: 1px solid #ccc;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .success { border-color: #4CAF50; background-color: #f1f8e9; }
+        .error { border-color: #f44336; background-color: #ffebee; }
+        .info { border-color: #2196F3; background-color: #e3f2fd; }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #45a049; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        input[type="file"] { margin: 10px 0; }
+        .result { margin: 10px 0; padding: 10px; background-color: #f5f5f5; border-radius: 4px; }
+        img { max-width: 200px; max-height: 200px; border-radius: 50%; }
+    </style>
+</head>
+<body>
+    <h1>Profile Photo Functionality Test</h1>
+    
+    <div class="test-section info">
+        <h2>Test Status</h2>
+        <div id="status">Initializing...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>1. Authentication Test</h2>
+        <button onclick="testAuth()">Test Authentication</button>
+        <div id="auth-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Profile Picture Upload Test</h2>
+        <input type="file" id="profile-file" accept="image/*">
+        <button onclick="testUpload()">Upload Profile Picture</button>
+        <div id="upload-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Profile Picture Display Test</h2>
+        <button onclick="testDisplay()">Test Display</button>
+        <div id="display-result" class="result">
+            <img id="profile-image" style="display: none;" alt="Profile Picture">
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. Profile Picture Deletion Test</h2>
+        <button onclick="testDelete()">Delete Profile Picture</button>
+        <div id="delete-result" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let authToken = null;
+        let currentUser = null;
+
+        // Test authentication
+        async function testAuth() {
+            const resultDiv = document.getElementById('auth-result');
+            resultDiv.innerHTML = 'Testing authentication...';
+            
+            try {
+                // Create test user if needed
+                const response = await fetch(`${API_BASE}/create-test-user`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.status === 500) {
+                    console.log('Test user already exists');
+                }
+                
+                // Login
+                const loginResponse = await fetch(`${API_BASE}/token`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'username=testuser&password=testpass123'
+                });
+                
+                if (loginResponse.ok) {
+                    const data = await loginResponse.json();
+                    authToken = data.access_token;
+                    resultDiv.innerHTML = '<span style="color: green;">✓ Authentication successful!</span>';
+                    updateStatus('Authenticated');
+                } else {
+                    throw new Error('Login failed');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span style="color: red;">✗ Authentication failed: ${error.message}</span>`;
+                updateStatus('Authentication failed');
+            }
+        }
+
+        // Test profile picture upload
+        async function testUpload() {
+            if (!authToken) {
+                document.getElementById('upload-result').innerHTML = '<span style="color: red;">Please authenticate first</span>';
+                return;
+            }
+            
+            const fileInput = document.getElementById('profile-file');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                document.getElementById('upload-result').innerHTML = '<span style="color: red;">Please select a file first</span>';
+                return;
+            }
+            
+            const resultDiv = document.getElementById('upload-result');
+            resultDiv.innerHTML = 'Uploading...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const response = await fetch(`${API_BASE}/users/me/profile-picture`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}` },
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    currentUser = data.user;
+                    resultDiv.innerHTML = `<span style="color: green;">✓ Upload successful! URL: ${data.profile_picture_url}</span>`;
+                    updateStatus('Profile picture uploaded');
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Upload failed');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span style="color: red;">✗ Upload failed: ${error.message}</span>`;
+                updateStatus('Upload failed');
+            }
+        }
+
+        // Test profile picture display
+        async function testDisplay() {
+            if (!currentUser || !currentUser.profile_picture) {
+                document.getElementById('display-result').innerHTML = '<span style="color: red;">No profile picture to display</span>';
+                return;
+            }
+            
+            const resultDiv = document.getElementById('display-result');
+            const img = document.getElementById('profile-image');
+            
+            try {
+                const imageUrl = `${API_BASE}${currentUser.profile_picture}`;
+                img.src = imageUrl;
+                img.style.display = 'block';
+                
+                img.onload = () => {
+                    resultDiv.innerHTML = '<span style="color: green;">✓ Image displayed successfully!</span>';
+                    updateStatus('Image displayed');
+                };
+                
+                img.onerror = () => {
+                    throw new Error('Failed to load image');
+                };
+            } catch (error) {
+                resultDiv.innerHTML = `<span style="color: red;">✗ Display failed: ${error.message}</span>`;
+                updateStatus('Display failed');
+            }
+        }
+
+        // Test profile picture deletion
+        async function testDelete() {
+            if (!authToken) {
+                document.getElementById('delete-result').innerHTML = '<span style="color: red;">Please authenticate first</span>';
+                return;
+            }
+            
+            const resultDiv = document.getElementById('delete-result');
+            resultDiv.innerHTML = 'Deleting...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/users/me/profile-picture`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    currentUser = data.user;
+                    document.getElementById('profile-image').style.display = 'none';
+                    resultDiv.innerHTML = '<span style="color: green;">✓ Deletion successful!</span>';
+                    updateStatus('Profile picture deleted');
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Deletion failed');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span style="color: red;">✗ Deletion failed: ${error.message}</span>`;
+                updateStatus('Deletion failed');
+            }
+        }
+
+        // Update status
+        function updateStatus(message) {
+            document.getElementById('status').innerHTML = `<strong>Current Status:</strong> ${message}`;
+        }
+
+        // Initialize
+        updateStatus('Ready to test');
+    </script>
+</body>
+</html>
+

@@ -1,172 +1,400 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, shallowRef } from 'vue'
 import { apiClient } from '@/utils/apiClient'
+import { createLRUCache, debounce } from '@/utils/performance'
 
 export const useArtworkStore = defineStore('artwork', () => {
-  const currentArtwork = ref(null)
-  const artworkHistory = ref([])
-  const likedArtworks = ref([])
-  const loading = ref(false)
-  const selectedSources = ref(['all'])
+  // State
+  const artworks = ref([])
+  const favorites = ref(new Set())
+  const isLoading = ref(false)
+  const error = ref(null)
+  const currentPage = ref(1)
+  const totalPages = ref(1)
+  const hasMore = ref(true)
+  
+  // Enhanced caching with LRU
+  const cache = createLRUCache(200) // Increased cache size
+  const lastFetchTime = ref(null)
+  
+  // Request deduplication
+  const pendingRequests = new Map()
+  
+  // Cache configuration
+  const CACHE_DURATION = 10 * 60 * 1000 // 10 minutes (increased)
+  const SEARCH_CACHE_DURATION = 5 * 60 * 1000 // 5 minutes for search results
 
-  const availableSources = [
-    'all',
-    'cleveland',
-    'met',
-    'chicago',
-    'walters',
-    'national_gallery',
-    'smithsonian',
-    'harvard'
-  ]
+  // Computed
+  const favoriteArtworks = computed(() => 
+    artworks.value.filter(artwork => favorites.value.has(artwork.id))
+  )
 
-  const getRandomArtwork = async () => {
-    loading.value = true
+  const isFavorited = (artworkId) => favorites.value.has(artworkId)
+
+  // Actions
+  const clearError = () => {
+    error.value = null
+  }
+
+  const clearCache = () => {
+    cache.clear()
+    lastFetchTime.value = null
+  }
+
+  const isCacheValid = (key, duration = CACHE_DURATION) => {
+    const cached = cache.get(key)
+    if (!cached) return false
+    
+    const now = Date.now()
+    return (now - cached.timestamp) < duration
+  }
+
+  const getCachedData = (key) => {
+    const cached = cache.get(key)
+    return cached ? cached.data : null
+  }
+
+  const setCachedData = (key, data, duration = CACHE_DURATION) => {
+    cache.set(key, {
+      data,
+      timestamp: Date.now(),
+      duration
+    })
+  }
+
+  // Request deduplication helper
+  const deduplicateRequest = async (key, requestFn) => {
+    if (pendingRequests.has(key)) {
+      return pendingRequests.get(key)
+    }
+    
+    const promise = requestFn()
+    pendingRequests.set(key, promise)
+    
     try {
-      const artwork = await apiClient.getRandomArtwork(selectedSources.value)
-      if (artwork) {
-        currentArtwork.value = artwork
-        artworkHistory.value.unshift(artwork)
-        
-        // Keep only last 10 artworks in history
-        if (artworkHistory.value.length > 10) {
-          artworkHistory.value = artworkHistory.value.slice(0, 10)
-        }
-      }
-      return artwork
-    } catch (error) {
-      console.error('Error fetching artwork:', error)
-      throw error
+      const result = await promise
+      return result
     } finally {
-      loading.value = false
+      pendingRequests.delete(key)
     }
   }
 
+  const fetchArtworks = async (page = 1, limit = 20, source = null, forceRefresh = false) => {
+    const cacheKey = `artworks_${page}_${limit}_${source || 'all'}`
+    
+    // Check cache first
+    if (!forceRefresh && isCacheValid(cacheKey)) {
+      const cachedData = getCachedData(cacheKey)
+      artworks.value = cachedData.artworks
+      totalPages.value = cachedData.total_pages
+      hasMore.value = cachedData.has_more
+      currentPage.value = page
+      return cachedData
+    }
+    
+    return deduplicateRequest(cacheKey, async () => {
+      try {
+        isLoading.value = true
+        error.value = null
+        
+        const params = { page, limit }
+        if (source) params.source = source
+        
+        const response = await apiClient.get('/artworks', { params })
+        
+        const data = response.data
+        artworks.value = data.artworks || data
+        totalPages.value = data.total_pages || 1
+        hasMore.value = data.has_more !== false
+        currentPage.value = page
+        lastFetchTime.value = Date.now()
+        
+        // Cache the result
+        setCachedData(cacheKey, {
+          artworks: artworks.value,
+          total_pages: totalPages.value,
+          has_more: hasMore.value
+        })
+        
+        return data
+      } catch (err) {
+        const errorMessage = err.response?.data?.detail || err.message || 'Failed to fetch artworks'
+        error.value = errorMessage
+        throw new Error(errorMessage)
+      } finally {
+        isLoading.value = false
+      }
+    })
+  }
+
+  const fetchMoreArtworks = async (limit = 20) => {
+    if (!hasMore.value || isLoading.value) return null
+    
+    const nextPage = currentPage.value + 1
+    return await fetchArtworks(nextPage, limit)
+  }
+
+  // Debounced search to reduce API calls
+  const debouncedSearch = debounce(async (query, page = 1, limit = 20) => {
+    try {
+      isLoading.value = true
+      error.value = null
+      
+      const cacheKey = `search_${query}_${page}_${limit}`
+      
+      // Check cache first
+      if (isCacheValid(cacheKey, SEARCH_CACHE_DURATION)) {
+        const cachedData = getCachedData(cacheKey)
+        artworks.value = cachedData.artworks
+        totalPages.value = cachedData.total_pages
+        hasMore.value = cachedData.has_more
+        currentPage.value = page
+        return cachedData
+      }
+      
+      const params = { q: query, page, limit }
+      const response = await apiClient.get('/artworks/search', { params })
+      
+      const data = response.data
+      artworks.value = data.artworks || data
+      totalPages.value = data.total_pages || 1
+      hasMore.value = data.has_more !== false
+      currentPage.value = page
+      
+      // Cache the result with shorter duration for search
+      setCachedData(cacheKey, {
+        artworks: artworks.value,
+        total_pages: totalPages.value,
+        has_more: hasMore.value
+      }, SEARCH_CACHE_DURATION)
+      
+      return data
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Search failed'
+      error.value = errorMessage
+      throw new Error(errorMessage)
+    } finally {
+      isLoading.value = false
+    }
+  }, 300) // 300ms debounce
+
+  const searchArtworks = async (query, page = 1, limit = 20) => {
+    return debouncedSearch(query, page, limit)
+  }
+
+  const fetchArtworkById = async (id) => {
+    const cacheKey = `artwork_${id}`
+    
+    // Check cache first
+    if (isCacheValid(cacheKey)) {
+      return getCachedData(cacheKey)
+    }
+    
+    return deduplicateRequest(cacheKey, async () => {
+      try {
+        const response = await apiClient.get(`/artworks/${id}`)
+        const artwork = response.data
+        
+        // Cache the result
+        setCachedData(cacheKey, artwork)
+        
+        return artwork
+      } catch (err) {
+        const errorMessage = err.response?.data?.detail || err.message || 'Failed to fetch artwork'
+        throw new Error(errorMessage)
+      }
+    })
+  }
+
+  const addFavorite = async (artworkId) => {
+    try {
+      await apiClient.post(`/artworks/${artworkId}/favorite`)
+      favorites.value.add(artworkId)
+      
+      // Update artwork in list if it exists
+      const artworkIndex = artworks.value.findIndex(a => a.id === artworkId)
+      if (artworkIndex !== -1) {
+        artworks.value[artworkIndex] = { ...artworks.value[artworkIndex], is_favorited: true }
+      }
+      
+      // Invalidate related caches
+      cache.clear()
+      
+      return true
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to add favorite'
+      throw new Error(errorMessage)
+    }
+  }
+
+  const removeFavorite = async (artworkId) => {
+    try {
+      await apiClient.delete(`/artworks/${artworkId}/favorite`)
+      favorites.value.delete(artworkId)
+      
+      // Update artwork in list if it exists
+      const artworkIndex = artworks.value.findIndex(a => a.id === artworkId)
+      if (artworkIndex !== -1) {
+        artworks.value[artworkIndex] = { ...artworks.value[artworkIndex], is_favorited: false }
+      }
+      
+      // Invalidate related caches
+      cache.clear()
+      
+      return true
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to remove favorite'
+      throw new Error(errorMessage)
+    }
+  }
+
+  const fetchFavorites = async () => {
+    const cacheKey = 'favorites'
+    
+    // Check cache first
+    if (isCacheValid(cacheKey)) {
+      const cachedData = getCachedData(cacheKey)
+      return cachedData
+    }
+    
+    return deduplicateRequest(cacheKey, async () => {
+      try {
+        isLoading.value = true
+        error.value = null
+        
+        const response = await apiClient.get('/artworks/favorites')
+        const favoriteArtworks = response.data.artworks || response.data
+        
+        // Update favorites set
+        favorites.value.clear()
+        favoriteArtworks.forEach(artwork => {
+          if (artwork.id) {
+            favorites.value.add(artwork.id)
+          }
+        })
+        
+        // Cache the result
+        setCachedData(cacheKey, favoriteArtworks)
+        
+        return favoriteArtworks
+      } catch (err) {
+        const errorMessage = err.response?.data?.detail || err.message || 'Failed to fetch favorites'
+        error.value = errorMessage
+        throw new Error(errorMessage)
+      } finally {
+        isLoading.value = false
+      }
+    })
+  }
+
+  // New methods for enhanced functionality
   const likeArtwork = async (artworkId, liked = true) => {
     try {
-      await apiClient.likeArtwork(artworkId, liked)
-      
-      // Update local state
       if (liked) {
-        const artwork = artworkHistory.value.find(a => a.id === artworkId)
-        if (artwork && !likedArtworks.value.find(a => a.id === artworkId)) {
-          likedArtworks.value.push(artwork)
-        }
+        await apiClient.post(`/artworks/${artworkId}/like`)
+        favorites.value.add(artworkId)
       } else {
-        likedArtworks.value = likedArtworks.value.filter(a => a.id !== artworkId)
+        await apiClient.delete(`/artworks/${artworkId}/like`)
+        favorites.value.delete(artworkId)
       }
-    } catch (error) {
-      console.error('Error liking artwork:', error)
-      throw error
-    }
-  }
-
-  const rateArtwork = async (artworkId, rating) => {
-    try {
-      await apiClient.rateArtwork(artworkId, rating)
-    } catch (error) {
-      console.error('Error rating artwork:', error)
-      throw error
-    }
-  }
-
-  const addNote = async (artworkId, note) => {
-    try {
-      await apiClient.addNote(artworkId, note)
-    } catch (error) {
-      console.error('Error adding note:', error)
-      throw error
+      
+      // Update artwork in list if it exists
+      const artworkIndex = artworks.value.findIndex(a => a.id === artworkId)
+      if (artworkIndex !== -1) {
+        artworks.value[artworkIndex] = { ...artworks.value[artworkIndex], is_favorited: liked }
+      }
+      
+      return true
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to update like status'
+      throw new Error(errorMessage)
     }
   }
 
   const loadLikedArtworks = async (filters = {}) => {
     try {
-      const artworks = await apiClient.getLikedArtworks(filters)
-      likedArtworks.value = artworks
-      return artworks
-    } catch (error) {
-      console.error('Error loading liked artworks:', error)
-      throw error
+      const response = await apiClient.get('/artworks/liked', { params: filters })
+      const likedArtworks = response.data.artworks || response.data
+      
+      // Update artworks list
+      artworks.value = likedArtworks
+      
+      // Update favorites set
+      favorites.value.clear()
+      likedArtworks.forEach(artwork => {
+        if (artwork.id) {
+          favorites.value.add(artwork.id)
+        }
+      })
+      
+      return likedArtworks
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to load liked artworks'
+      error.value = errorMessage
+      throw new Error(errorMessage)
     }
   }
 
   const getLikedArtworksFilterOptions = async () => {
     try {
-      return await apiClient.getLikedArtworksFilterOptions()
-    } catch (error) {
-      console.error('Error loading filter options:', error)
-      throw error
+      const response = await apiClient.get('/artworks/liked/filters')
+      return response.data
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to get filter options'
+      throw new Error(errorMessage)
     }
   }
 
-  const getUserStats = async () => {
-    try {
-      return await apiClient.getUserStats()
-    } catch (error) {
-      console.error('Error loading user stats:', error)
-      throw error
-    }
+  const resetPagination = () => {
+    currentPage.value = 1
+    totalPages.value = 1
+    hasMore.value = true
   }
 
-  const getArtworks = async (params = {}) => {
-    try {
-      const { page = 1, sources = ['all'], sortBy = 'random' } = params
-      const artworks = await apiClient.getArtworks({ page, sources, sortBy })
-      return artworks
-    } catch (error) {
-      console.error('Error fetching artworks:', error)
-      throw error
-    }
+  const refreshArtworks = async () => {
+    clearCache()
+    resetPagination()
+    return await fetchArtworks(1, 20)
   }
 
-  const getGalleryArtworks = async (params = {}) => {
-    try {
-      const { page = 1, sources = ['all'], sortBy = 'random' } = params
-      const artworks = await apiClient.getGalleryArtworks({ page, sources, sortBy })
-      return artworks
-    } catch (error) {
-      console.error('Error fetching gallery artworks:', error)
-      throw error
-    }
-  }
-
-  const getRecommendations = async (limit = 10) => {
-    try {
-      const artworks = await apiClient.getRecommendations(limit)
-      return artworks
-    } catch (error) {
-      console.error('Error fetching recommendations:', error)
-      throw error
-    }
-  }
-
-  const getPopularArtworks = async (limit = 10) => {
-    try {
-      const artworks = await apiClient.getPopularArtworks(limit)
-      return artworks
-    } catch (error) {
-      console.error('Error fetching popular artworks:', error)
-      throw error
+  // Performance monitoring
+  const getCacheStats = () => {
+    return {
+      cacheSize: cache.size(),
+      lastFetch: lastFetchTime.value,
+      pendingRequests: pendingRequests.size
     }
   }
 
   return {
-    currentArtwork,
-    artworkHistory,
-    likedArtworks,
-    loading,
-    selectedSources,
-    availableSources,
-    getRandomArtwork,
+    // State
+    artworks,
+    favorites,
+    isLoading,
+    error,
+    currentPage,
+    totalPages,
+    hasMore,
+    
+    // Computed
+    favoriteArtworks,
+    isFavorited,
+    
+    // Actions
+    fetchArtworks,
+    fetchMoreArtworks,
+    searchArtworks,
+    fetchArtworkById,
+    addFavorite,
+    removeFavorite,
+    fetchFavorites,
     likeArtwork,
-    rateArtwork,
-    addNote,
     loadLikedArtworks,
     getLikedArtworksFilterOptions,
-    getUserStats,
-    getArtworks,
-    getGalleryArtworks,
-    getRecommendations,
-    getPopularArtworks
+    resetPagination,
+    refreshArtworks,
+    clearError,
+    clearCache,
+    getCacheStats
   }
 }) 

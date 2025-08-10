@@ -1,26 +1,11 @@
 <template>
   <div class="min-h-screen bg-art-cream">
     <!-- Header -->
-    <header class="bg-white shadow-sm border-b border-gray-200">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center py-4">
-          <div class="flex items-center">
-            <router-link to="/" class="text-2xl font-serif font-bold text-gray-900">🎨 Art Explorer</router-link>
-          </div>
-          <nav class="flex items-center space-x-4">
-            <router-link to="/" class="text-gray-600 hover:text-gray-900">
-              Home
-            </router-link>
-            <router-link to="/gallery" class="text-gray-600 hover:text-gray-900">
-              Gallery
-            </router-link>
-            <button @click="logout" class="text-gray-600 hover:text-gray-900">
-              Logout
-            </button>
-          </nav>
-        </div>
-      </div>
-    </header>
+    <AppHeader>
+      <template #title>
+        <span class="text-lg font-semibold text-gray-700">Profile</span>
+      </template>
+    </AppHeader>
 
     <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -33,18 +18,95 @@
         <!-- User Info -->
         <div class="card p-6 mb-6">
           <h2 class="text-xl font-semibold mb-4">Account Information</h2>
-          <div class="space-y-3">
-            <div>
-              <span class="text-sm font-medium text-gray-500">Username:</span>
-              <span class="ml-2 text-gray-900">{{ user?.username }}</span>
+          
+          <div class="flex flex-col sm:flex-row gap-6">
+            <!-- Profile Picture Section -->
+            <div class="flex flex-col items-center space-y-3">
+              <div class="relative group">
+                <div class="w-24 h-24 rounded-full overflow-hidden bg-gray-200 border-2 border-gray-300">
+                  <img 
+                    v-if="user?.profile_picture" 
+                    :src="getProfilePictureUrl(user.profile_picture)" 
+                    :alt="user.username"
+                    class="w-full h-full object-cover"
+                    @error="handleImageError"
+                    @load="handleImageLoad"
+                  >
+                  <div v-else class="w-full h-full flex items-center justify-center text-gray-400">
+                    <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+                    </svg>
+                  </div>
+                </div>
+                
+                <!-- Upload Button Overlay -->
+                <button 
+                  @click="triggerFileUpload"
+                  :disabled="uploading"
+                  class="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs"
+                >
+                  <span v-if="uploading" class="flex items-center">
+                    <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Uploading...
+                  </span>
+                  <span v-else>Change</span>
+                </button>
+              </div>
+              
+              <!-- File Input (Hidden) -->
+              <input 
+                ref="fileInput"
+                type="file"
+                accept="image/*"
+                @change="handleFileUpload"
+                class="hidden"
+              >
+              
+              <!-- Profile Picture Actions -->
+              <div class="flex space-x-2">
+                <button 
+                  @click="triggerFileUpload"
+                  :disabled="uploading"
+                  class="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {{ user?.profile_picture ? 'Change' : 'Upload' }}
+                </button>
+                <button 
+                  v-if="user?.profile_picture"
+                  @click="deleteProfilePicture"
+                  :disabled="uploading"
+                  class="text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 disabled:opacity-50 transition-colors"
+                >
+                  Remove
+                </button>
+              </div>
+              
+              <!-- Upload Progress -->
+              <div v-if="uploading" class="w-full">
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div class="bg-blue-600 h-2 rounded-full transition-all duration-300" :style="{ width: uploadProgress + '%' }"></div>
+                </div>
+                <p class="text-xs text-gray-600 mt-1">{{ uploadProgress }}%</p>
+              </div>
             </div>
-            <div v-if="user?.email">
-              <span class="text-sm font-medium text-gray-500">Email:</span>
-              <span class="ml-2 text-gray-900">{{ user.email }}</span>
-            </div>
-            <div>
-              <span class="text-sm font-medium text-gray-500">Member since:</span>
-              <span class="ml-2 text-gray-900">{{ formatDate(user?.created_at) }}</span>
+            
+            <!-- User Details -->
+            <div class="flex-1 space-y-3">
+              <div>
+                <span class="text-sm font-medium text-gray-500">Username:</span>
+                <span class="ml-2 text-gray-900">{{ user?.username }}</span>
+              </div>
+              <div v-if="user?.email">
+                <span class="text-sm font-medium text-gray-500">Email:</span>
+                <span class="ml-2 text-gray-900">{{ user.email }}</span>
+              </div>
+              <div>
+                <span class="text-sm font-medium text-gray-500">Member since:</span>
+                <span class="ml-2 text-gray-900">{{ formatDate(user?.created_at) }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -56,9 +118,13 @@
             <button 
               @click="loadStats" 
               :disabled="loading"
-              class="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50 transition-colors"
+              class="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50 transition-colors flex items-center"
             >
-              {{ loading ? '⏳ Loading...' : '🔄 Refresh' }}
+              <svg v-if="loading" class="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {{ loading ? 'Loading...' : '🔄 Refresh' }}
             </button>
           </div>
           
@@ -66,6 +132,9 @@
           <div v-if="error" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
             <div class="flex items-center">
               <span class="text-red-600 text-sm">⚠️ {{ error }}</span>
+              <button @click="loadStats" class="ml-2 text-red-600 hover:text-red-800 text-sm underline">
+                Try Again
+              </button>
             </div>
           </div>
           
@@ -120,10 +189,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useArtworkStore } from '@/stores/artwork'
+import { apiClient } from '@/utils/apiClient'
+import AppHeader from '@/components/AppHeader.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -133,11 +204,9 @@ const user = computed(() => authStore.user)
 const stats = ref({})
 const loading = ref(false)
 const error = ref(null)
-
-const logout = () => {
-  authStore.logout()
-  router.push('/login')
-}
+const uploading = ref(false)
+const uploadProgress = ref(0)
+const fileInput = ref(null)
 
 const formatDate = (dateString) => {
   if (!dateString) return 'Unknown'
@@ -146,6 +215,15 @@ const formatDate = (dateString) => {
     month: 'long',
     day: 'numeric'
   })
+}
+
+const getProfilePictureUrl = (profilePicturePath) => {
+  if (!profilePicturePath) return null
+  // Handle both relative and absolute URLs
+  if (profilePicturePath.startsWith('http')) {
+    return profilePicturePath
+  }
+  return `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}${profilePicturePath}`
 }
 
 const loadStats = async () => {
@@ -167,6 +245,120 @@ const loadStats = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const triggerFileUpload = () => {
+  if (fileInput.value) {
+    fileInput.value.click()
+  }
+}
+
+const handleFileUpload = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  // Validate file type
+  if (!file.type.startsWith('image/')) {
+    showNotification('Please select an image file', 'error')
+    return
+  }
+  
+  // Validate file size (5MB limit)
+  const maxSize = 5 * 1024 * 1024 // 5MB
+  if (file.size > maxSize) {
+    showNotification('File size must be less than 5MB', 'error')
+    return
+  }
+  
+  try {
+    uploading.value = true
+    uploadProgress.value = 0
+    
+    // Simulate upload progress
+    const progressInterval = setInterval(() => {
+      if (uploadProgress.value < 90) {
+        uploadProgress.value += 10
+      }
+    }, 100)
+    
+    // Use the auth store method instead of apiClient
+    const result = await authStore.updateProfilePicture(file)
+    
+    clearInterval(progressInterval)
+    uploadProgress.value = 100
+    
+    showNotification('Profile picture uploaded successfully!', 'success')
+    
+    // Reset progress after a delay
+    setTimeout(() => {
+      uploadProgress.value = 0
+    }, 1000)
+    
+  } catch (error) {
+    console.error('Error uploading profile picture:', error)
+    showNotification('Failed to upload profile picture. Please try again.', 'error')
+  } finally {
+    uploading.value = false
+    // Clear the file input
+    if (fileInput.value) {
+      fileInput.value.value = ''
+    }
+  }
+}
+
+const deleteProfilePicture = async () => {
+  if (!confirm('Are you sure you want to remove your profile picture?')) {
+    return
+  }
+  
+  try {
+    uploading.value = true
+    // Use the auth store method instead of apiClient
+    const result = await authStore.deleteProfilePicture()
+    
+    showNotification('Profile picture removed successfully!', 'success')
+  } catch (error) {
+    console.error('Error deleting profile picture:', error)
+    showNotification('Failed to remove profile picture. Please try again.', 'error')
+  } finally {
+    uploading.value = false
+  }
+}
+
+const handleImageError = (event) => {
+  console.error('Failed to load profile picture')
+  // Set a default fallback
+  event.target.style.display = 'none'
+  const fallback = event.target.parentElement.querySelector('div')
+  if (fallback) {
+    fallback.style.display = 'flex'
+  }
+}
+
+const handleImageLoad = (event) => {
+  // Hide fallback when image loads successfully
+  const fallback = event.target.parentElement.querySelector('div')
+  if (fallback) {
+    fallback.style.display = 'none'
+  }
+}
+
+const showNotification = (message, type = 'info') => {
+  // Simple notification system - you could enhance this with a toast library
+  const notification = document.createElement('div')
+  notification.className = `fixed top-4 right-4 p-4 rounded-md text-white z-50 transition-all duration-300 ${
+    type === 'success' ? 'bg-green-500' : 
+    type === 'error' ? 'bg-red-500' : 
+    'bg-blue-500'
+  }`
+  notification.textContent = message
+  
+  document.body.appendChild(notification)
+  
+  // Auto-remove after 3 seconds
+  setTimeout(() => {
+    notification.remove()
+  }, 3000)
 }
 
 onMounted(() => {

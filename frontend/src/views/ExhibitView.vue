@@ -1,37 +1,23 @@
 <template>
   <div class="min-h-screen bg-gray-50">
     <!-- Header -->
-    <header class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
-      <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center py-3 sm:py-4">
-          <div class="flex items-center space-x-3">
-            <h1 class="text-lg sm:text-2xl font-serif font-bold text-gray-900">🎨 Exhibit</h1>
-            <!-- Filter Toggle Button -->
-            <button 
-              @click="showFilters = !showFilters"
-              class="flex items-center space-x-1 text-gray-500 hover:text-gray-700 transition-colors p-1 rounded-lg"
-              :class="{ 'text-blue-600': showFilters || hasActiveFilters }"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707v4.586l-4-2v-2.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-              </svg>
-              <span class="text-xs hidden sm:inline">Filter</span>
-              <span v-if="hasActiveFilters" class="w-2 h-2 bg-blue-500 rounded-full"></span>
-            </button>
-          </div>
-          <nav class="flex items-center space-x-2 sm:space-x-4">
-            <router-link to="/gallery" class="text-sm sm:text-base text-gray-600 hover:text-gray-900 px-2 py-1 rounded active:bg-gray-100 touch-manipulation">
-              Gallery
-            </router-link>
-            <router-link to="/profile" class="text-sm sm:text-base text-gray-600 hover:text-gray-900 px-2 py-1 rounded active:bg-gray-100 touch-manipulation">
-              Profile
-            </router-link>
-            <button @click="logout" class="text-sm sm:text-base text-gray-600 hover:text-gray-900 px-2 py-1 rounded active:bg-gray-100 touch-manipulation">
-              Logout
-            </button>
-          </nav>
-        </div>
-      </div>
+    <AppHeader>
+      <template #title>
+        <h1 class="text-lg sm:text-2xl font-serif font-bold text-gray-900">🎨 Exhibit</h1>
+        <!-- Filter Toggle Button -->
+        <button 
+          @click="showFilters = !showFilters"
+          class="flex items-center space-x-1 text-gray-500 hover:text-gray-700 transition-colors p-1 rounded-lg"
+          :class="{ 'text-blue-600': showFilters || hasActiveFilters }"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707v4.586l-4-2v-2.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          </svg>
+          <span class="text-xs hidden sm:inline">Filter</span>
+          <span v-if="hasActiveFilters" class="w-2 h-2 bg-blue-500 rounded-full"></span>
+        </button>
+      </template>
+    </AppHeader>
       
       <!-- Filter Panel -->
       <transition name="slide-down">
@@ -96,7 +82,6 @@
           </div>
         </div>
       </transition>
-    </header>
 
     <!-- Main Content -->
     <main class="max-w-2xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
@@ -253,6 +238,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useArtworkStore } from '@/stores/artwork'
 import { getOptimizedImageUrl, getFallbackImageUrl } from '@/utils/imageUtils'
+import AppHeader from '@/components/AppHeader.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -409,10 +395,7 @@ const resetExhibit = () => {
   loadMoreArtworks()
 }
 
-const logout = () => {
-  authStore.logout()
-  router.push('/login')
-}
+
 
 const getSourceDisplayName = (source) => {
   const displayNames = {
