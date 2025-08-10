@@ -202,6 +202,7 @@ import { apiClient } from '@/utils/apiClient'
 import AppHeader from '@/components/AppHeader.vue'
 import { useToast } from '@/composables/useToast'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
+import { config } from '@/config'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -230,7 +231,7 @@ const getProfilePictureUrl = (profilePicturePath) => {
   if (profilePicturePath.startsWith('http')) {
     return profilePicturePath
   }
-  return `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}${profilePicturePath}`
+      return `${import.meta.env.VITE_API_BASE_URL || config.apiBaseUrl}${profilePicturePath}`
 }
 
 const loadStats = async () => {

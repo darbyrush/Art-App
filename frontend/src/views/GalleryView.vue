@@ -475,6 +475,7 @@ import { getOptimizedImageUrl } from '@/utils/imageUtils'
 import AppHeader from '@/components/AppHeader.vue'
 import VirtualScroller from '@/components/VirtualScroller.vue'
 import OptimizedImage from '@/components/OptimizedImage.vue'
+import { config } from '@/config'
 
 const router = useRouter()
 const route = useRoute()
@@ -812,7 +813,7 @@ const createBoard = async () => {
 }
 
 const handleImageError = (event) => {
-  event.target.src = `http://localhost:8000/placeholder/default.jpg?t=${Date.now()}`
+          event.target.src = `${config.apiBaseUrl}/placeholder/default.jpg?t=${Date.now()}`
 }
 
 // Watchers

@@ -290,10 +290,7 @@ def get_cors_origins():
     default_origins = [
         "https://myassemblage.art",
         "https://www.myassemblage.art",
-        "https://api.myassemblage.art",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000"
+        "https://api.myassemblage.art"
     ]
     all_origins = [origin.strip() for origin in cors_origins if origin.strip()] + default_origins
     return all_origins

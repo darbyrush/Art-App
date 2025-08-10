@@ -92,6 +92,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { config } from '@/config'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -104,7 +105,7 @@ const getProfilePictureUrl = (profilePicturePath) => {
   if (profilePicturePath.startsWith('http')) {
     return profilePicturePath
   }
-  return `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}${profilePicturePath}`
+      return `${import.meta.env.VITE_API_BASE_URL || config.apiBaseUrl}${profilePicturePath}`
 }
 
 const logout = () => {

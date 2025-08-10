@@ -80,6 +80,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { createIntersectionObserver } from '@/utils/performance'
+import { config } from '@/config'
 
 const props = defineProps({
   src: {
@@ -140,14 +141,14 @@ const imageUrl = computed(() => {
     return props.src
   }
   
-  return `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}${props.src}`
+  return `${import.meta.env.VITE_API_BASE_URL || config.apiBaseUrl}${props.src}`
 })
 
 const lowQualityUrl = computed(() => {
   if (!props.src) return null
   
   // Generate low quality version for progressive loading
-  const baseUrl = props.src.startsWith('http') ? props.src : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}${props.src}`
+  const baseUrl = props.src.startsWith('http') ? props.src : `${import.meta.env.VITE_API_BASE_URL || config.apiBaseUrl}${props.src}`
   return `${baseUrl}?quality=low&w=100`
 })
 
