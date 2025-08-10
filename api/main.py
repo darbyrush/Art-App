@@ -67,17 +67,10 @@ async def startup_event():
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Import CORS configuration
-from api.cors_config import get_cors_origins, DynamicCORSMiddleware
+from api.cors_config import get_cors_middleware
 
 # Add CORS middleware with proper configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=get_cors_origins(),
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=["*"]
-)
+app.add_middleware(get_cors_middleware())
 
 # Global exception handlers to ensure CORS headers are set
 @app.exception_handler(HTTPException)

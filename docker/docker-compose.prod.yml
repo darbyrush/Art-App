@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: art-app-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/art_app
+      - SECRET_KEY=${SECRET_KEY}
+      - CORS_ORIGINS=https://myassemblage.art,https://www.myassemblage.art,https://api.myassemblage.art
+      - NODE_ENV=production
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    volumes:
+      - ../uploads:/app/uploads
+      - ../logs:/app/logs
+    networks:
+      - art-app-network
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    container_name: art-app-frontend
+    restart: unless-stopped
+    environment:
+      - VITE_API_BASE_URL=https://api.myassemblage.art
+      - VITE_FRONTEND_URL=https://myassemblage.art
+      - NODE_ENV=production
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+    networks:
+      - art-app-network
+
+  db:
+    image: postgres:15-alpine
+    container_name: art-app-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=art_app
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - art-app-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: art-app-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ../frontend/dist:/usr/share/nginx/html
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - art-app-network
+
+volumes:
+  postgres_data:
+
+networks:
+  art-app-network:
+    driver: bridge

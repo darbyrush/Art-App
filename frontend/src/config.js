@@ -1,16 +1,32 @@
-// API Configuration
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+// Configuration for the application
+export const config = {
+  // API base URL - use Railway backend URL
+  apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'https://art-app-production.up.railway.app',
+  
+  // App settings
+  appName: 'Art Explorer',
+  version: '1.0.0',
+  
+  // Feature flags
+  features: {
+    imageOptimization: true,
+    virtualScrolling: true,
+    keyboardShortcuts: true
+  }
+}
 
-// Frontend Configuration
-export const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || 'http://localhost:5173'
+// Environment-specific overrides
+if (import.meta.env.PROD) {
+  // Production settings
+  config.features.imageOptimization = true
+  config.features.virtualScrolling = true
+  // Force production API URL if not set
+  if (!import.meta.env.VITE_API_BASE_URL) {
+    config.apiBaseUrl = 'https://art-app-production.up.railway.app'
+  }
+}
 
-// CORS Configuration
-export const CORS_ORIGINS = [
-  FRONTEND_URL,
-  'http://localhost:3000',
-  'http://localhost:3001'
-]
-
-// Debug: Log the API URL being used
-console.log('API Base URL:', API_BASE_URL)
-console.log('Frontend URL:', FRONTEND_URL) 
+// Debug logging
+console.log('Environment:', import.meta.env.MODE)
+console.log('API Base URL:', config.apiBaseUrl)
+console.log('VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL) 

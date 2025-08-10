@@ -19,13 +19,26 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
 
 import os
 
-def get_cors_origins():
-    """Get CORS origins configuration"""
-    # Check for environment variable first
-    cors_origins_env = os.getenv("CORS_ORIGINS")
-    if cors_origins_env:
-        # Split by comma if multiple origins are provided
-        return [origin.strip() for origin in cors_origins_env.split(",")]
+def get_cors_middleware():
+    # Get CORS origins from environment variable or use defaults
+    cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
     
-    # For development, allow all origins to avoid CORS issues
-    return ["*"] 
+    # Default origins for development and production
+    default_origins = [
+        "https://myassemblage.art",
+        "https://www.myassemblage.art", 
+        "https://api.myassemblage.art",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000"
+    ]
+    
+    # Combine environment origins with defaults, removing empty strings
+    all_origins = [origin.strip() for origin in cors_origins if origin.strip()] + default_origins
+    
+    return CORSMiddleware(
+        allow_origins=all_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    ) 
