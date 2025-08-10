@@ -13,7 +13,7 @@ LOG_LEVEL=INFO
 # DATABASE CONFIGURATION
 # =============================================================================
 # PostgreSQL (Railway or other cloud provider)
-DATABASE_URL=postgresql://username:password@host:port/database
+DATABASE_URL=postgresql://postgres:VPzlvfYNNmRSpxWukjeUIuGDsSFHwKOc@postgres.railway.internal:5432/railway
 # Alternative: Individual PostgreSQL settings
 POSTGRES_HOST=your_postgres_host
 POSTGRES_PORT=5432
