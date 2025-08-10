@@ -53,9 +53,9 @@ ENV PATH=/home/appuser/.local/bin:$PATH
 # Expose port (Railway will set the actual port via $PORT)
 EXPOSE 8000
 
-# Health check
+# Health check (use fixed port for health check)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command for Railway
-CMD ["gunicorn", "api.main:app", "--bind", "0.0.0.0:8000", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--timeout", "120", "--keep-alive", "5"] 
+# Use shell form to properly expand environment variables and add debug output
+CMD echo "Starting with PORT=${PORT:-8000}" && uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 4 
