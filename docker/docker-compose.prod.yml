@@ -1,81 +1,221 @@
 version: '3.8'
 
 services:
+  # Redis for image caching and sessions
+  redis:
+    image: redis:7-alpine
+    container_name: art-explorer-redis-prod
+    ports:
+      - "127.0.0.1:6379:6379"  # Bind to localhost only
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - art_network
+    security_opt:
+      - no-new-privileges:true
+
+  # PostgreSQL for production database
+  postgres:
+    image: postgres:15-alpine
+    container_name: art-explorer-postgres-prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-art_explorer}
+      POSTGRES_USER: ${POSTGRES_USER:-artuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "127.0.0.1:5432:5432"  # Bind to localhost only
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-artuser} -d ${POSTGRES_DB:-art_explorer}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - art_network
+    security_opt:
+      - no-new-privileges:true
+    command: >
+      postgres
+      -c shared_preload_libraries=pg_stat_statements
+      -c pg_stat_statements.track=all
+      -c max_connections=100
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=4MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+
+  # Backend API
   backend:
     build:
       context: ..
       dockerfile: docker/Dockerfile.backend
-    container_name: art-app-backend
-    restart: unless-stopped
-    environment:
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/art_app
-      - SECRET_KEY=${SECRET_KEY}
-      - CORS_ORIGINS=https://myassemblage.art,https://www.myassemblage.art,https://api.myassemblage.art
-      - NODE_ENV=production
+    container_name: art-explorer-backend-prod
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8001:8000"  # Bind to localhost only
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-artuser}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-art_explorer}
+      - ENVIRONMENT=production
+      - SECRET_KEY=${SECRET_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-10485760}
+      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-100}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
     depends_on:
-      - db
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
     volumes:
-      - ../uploads:/app/uploads
-      - ../logs:/app/logs
+      - ../api:/app/api:ro
+      - ../database:/app/database:ro
+      - ../backend:/app/backend:ro
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
     networks:
-      - art-app-network
+      - art_network
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
 
+  # Frontend
   frontend:
     build:
       context: ../frontend
       dockerfile: ../docker/Dockerfile.frontend
-    container_name: art-app-frontend
-    restart: unless-stopped
-    environment:
-      - VITE_API_BASE_URL=https://api.myassemblage.art
-      - VITE_FRONTEND_URL=https://myassemblage.art
-      - NODE_ENV=production
+    container_name: art-explorer-frontend-prod
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:3000:80"  # Bind to localhost only
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8001}
+      - NODE_ENV=production
     depends_on:
       - backend
-    networks:
-      - art-app-network
-
-  db:
-    image: postgres:15-alpine
-    container_name: art-app-db
     restart: unless-stopped
-    environment:
-      - POSTGRES_DB=art_app
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ../database/init.sql:/docker-entrypoint-initdb.d/init.sql
-    ports:
-      - "5432:5432"
     networks:
-      - art-app-network
+      - art_network
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
 
+  # Nginx reverse proxy
   nginx:
     image: nginx:alpine
-    container_name: art-app-nginx
-    restart: unless-stopped
+    container_name: art-explorer-nginx-prod
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
       - ./ssl:/etc/nginx/ssl:ro
-      - ../frontend/dist:/usr/share/nginx/html
+      - nginx_logs:/var/log/nginx
     depends_on:
       - backend
       - frontend
+    restart: unless-stopped
     networks:
-      - art-app-network
+      - art_network
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+        reservations:
+          memory: 64M
+          cpus: '0.1'
+
+  # Monitoring stack (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: art-explorer-prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - art_network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: art-explorer-grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - art_network
+    restart: unless-stopped
 
 volumes:
+  redis_data:
+    driver: local
   postgres_data:
+    driver: local
+  uploads_data:
+    driver: local
+  logs_data:
+    driver: local
+  nginx_logs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
 
 networks:
-  art-app-network:
+  art_network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

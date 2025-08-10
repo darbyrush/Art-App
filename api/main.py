@@ -4,6 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, FileResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timedelta
@@ -16,11 +20,12 @@ import aiohttp
 import logging
 import sys
 import os
+import time
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.config import get_db, init_db
+from database.config import get_db, init_db, test_connection, get_connection_info
 from database.models import User, Artwork, UserLike, UserRating, UserNote, ImageCache
 from api.image_cache_service import image_cache_service
 from api.schemas import (
@@ -34,34 +39,112 @@ from api.auth import (
 )
 from api.services import ArtworkService, UserService, UserLikeService, UserRatingService, UserNoteService, BoardService
 from api.artwork_populator import populate_database, get_stats
+from backend.config import config
+
+# Production environment validation
+def validate_production_environment():
+    """Validate critical production environment variables"""
+    if config.is_production:
+        required_vars = [
+            "SECRET_KEY",
+            "DATABASE_URL",
+            "ENVIRONMENT"
+        ]
+        
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        if missing_vars:
+            raise ValueError(f"Missing required environment variables in production: {missing_vars}")
+        
+        # Ensure SECRET_KEY is not the default
+        secret_key = os.getenv("SECRET_KEY")
+        if secret_key in ["your-secret-key-here", "dev-secret-key-change-in-production"]:
+            raise ValueError("SECRET_KEY must be set to a secure value in production")
+        
+        # Ensure ENVIRONMENT is set to production
+        if os.getenv("ENVIRONMENT") != "production":
+            raise ValueError("ENVIRONMENT must be set to 'production' in production")
+
+# Validate environment before starting
+try:
+    validate_production_environment()
+except ValueError as e:
+    if config.is_production:
+        print(f"CRITICAL ERROR: {e}")
+        sys.exit(1)
+    else:
+        print(f"Warning: {e}")
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=getattr(logging, config.log_level),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('app.log') if config.is_production else logging.NullHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
-# Initialize database
-try:
-    init_db()
-    print("Database initialized successfully")
-except Exception as e:
-    print(f"Warning: Could not initialize database: {e}")
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
+app = FastAPI(
+    title="Art Explorer API", 
+    version="1.0.0",
+    description="Production-ready Art Explorer API with enhanced security and performance",
+    docs_url="/docs" if not config.is_production else None,
+    redoc_url="/redoc" if not config.is_production else None
+)
 
-# Start background scheduler
-try:
-    from api.scheduler import start_background_scheduler
-    start_background_scheduler()
-except Exception as e:
-    print(f"Warning: Could not start background scheduler: {e}")
-
-app = FastAPI(title="Art Explorer API", version="1.0.0")
+# Add rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.on_event("startup")
 async def startup_event():
-    """Ensure uploads directory exists on startup"""
+    """Initialize app components on startup"""
     import os
+    
+    # Validate production configuration
+    if config.is_production:
+        validation = config.validate_production_config()
+        if not validation["is_valid"]:
+            logger.error(f"Production configuration validation failed: {validation['errors']}")
+            raise RuntimeError("Invalid production configuration")
+        if validation["warnings"]:
+            logger.warning(f"Production configuration warnings: {validation['warnings']}")
+    
+    # Ensure uploads directory exists
     uploads_dir = "uploads/profile_pictures"
     os.makedirs(uploads_dir, exist_ok=True)
-    print(f"Uploads directory ensured: {uploads_dir}")
+    logger.info(f"Uploads directory ensured: {uploads_dir}")
+    
+    # Initialize database with retry logic
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            init_db()
+            logger.info("Database initialized successfully")
+            break
+        except Exception as e:
+            logger.error(f"Database initialization attempt {attempt + 1} failed: {e}")
+            if attempt == max_retries - 1:
+                logger.error("Database initialization failed after all retries")
+                raise
+            else:
+                time.sleep(2 ** attempt)  # Exponential backoff
+    
+    # Test database connection
+    if not test_connection():
+        logger.error("Database connection test failed")
+        raise RuntimeError("Database connection failed")
+    
+    # Start background scheduler
+    try:
+        from api.scheduler import start_background_scheduler
+        start_background_scheduler()
+        logger.info("Background scheduler started successfully")
+    except Exception as e:
+        logger.warning(f"Could not start background scheduler: {e}")
 
 # Mount static files for serving uploaded profile pictures
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
@@ -71,6 +154,149 @@ from api.cors_config import get_cors_middleware
 
 # Add CORS middleware with proper configuration
 app.add_middleware(get_cors_middleware())
+
+# Add trusted host middleware for production
+if config.is_production:
+    app.add_middleware(
+        TrustedHostMiddleware, 
+        allowed_hosts=["myassemblage.art", "www.myassemblage.art", "localhost"]
+    )
+
+# Add security headers middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Add security headers to all responses"""
+    start_time = time.time()
+    
+    # Add request ID for tracking
+    request_id = request.headers.get("X-Request-ID", f"req_{int(start_time * 1000)}")
+    
+    response = await call_next(request)
+    
+    # Security headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains" if config.is_production else ""
+    response.headers["X-Request-ID"] = request_id
+    
+    # Performance headers
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    
+    # Log request
+    logger.info(f"{request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
+    
+    return response
+
+# Rate limiting middleware for production
+from collections import defaultdict
+import time
+
+# Simple in-memory rate limiter (use Redis in production)
+rate_limit_store = defaultdict(list)
+RATE_LIMIT_WINDOW = 60  # 1 minute
+MAX_REQUESTS_PER_WINDOW = 100  # 100 requests per minute
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Rate limiting middleware for production security"""
+    if not config.is_production:
+        return await call_next(request)
+    
+    # Get client IP
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # Clean old entries
+    current_time = time.time()
+    rate_limit_store[client_ip] = [
+        req_time for req_time in rate_limit_store[client_ip] 
+        if current_time - req_time < RATE_LIMIT_WINDOW
+    ]
+    
+    # Check rate limit
+    if len(rate_limit_store[client_ip]) >= MAX_REQUESTS_PER_WINDOW:
+        logger.warning(f"Rate limit exceeded for IP: {client_ip}")
+        return Response(
+            content="Rate limit exceeded. Please try again later.",
+            status_code=429,
+            media_type="text/plain"
+        )
+    
+    # Add current request
+    rate_limit_store[client_ip].append(current_time)
+    
+    # Continue with request
+    return await call_next(request)
+
+# Input validation middleware for production
+import re
+from urllib.parse import urlparse
+
+@app.middleware("http")
+async def input_validation_middleware(request: Request, call_next):
+    """Input validation middleware for production security"""
+    if not config.is_production:
+        return await call_next(request)
+    
+    # Validate URL parameters
+    path_params = request.path_params
+    for param_name, param_value in path_params.items():
+        if isinstance(param_value, str):
+            # Check for potential injection attacks
+            if re.search(r'[<>"\']', param_value):
+                logger.warning(f"Potential injection attack detected in path parameter {param_name}: {param_value}")
+                return Response(
+                    content="Invalid input detected",
+                    status_code=400,
+                    media_type="text/plain"
+                )
+    
+    # Validate query parameters
+    query_params = request.query_params
+    for param_name, param_value in query_params.items():
+        if isinstance(param_value, str):
+            # Check for potential injection attacks
+            if re.search(r'[<>"\']', param_value):
+                logger.warning(f"Potential injection attack detected in query parameter {param_name}: {param_value}")
+                return Response(
+                    content="Invalid input detected",
+                    status_code=400,
+                    media_type="text/plain"
+                )
+    
+    # Validate request body size (if applicable)
+    if request.method in ["POST", "PUT", "PATCH"]:
+        content_length = request.headers.get("content-length")
+        if content_length:
+            max_size = 10 * 1024 * 1024  # 10MB limit
+            if int(content_length) > max_size:
+                logger.warning(f"Request body too large: {content_length} bytes")
+                return Response(
+                    content="Request body too large",
+                    status_code=413,
+                    media_type="text/plain"
+                )
+    
+    # Continue with request
+    return await call_next(request)
+
+def get_cors_origins():
+    """Get allowed CORS origins from environment or defaults"""
+    import os
+    cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
+    default_origins = [
+        "https://myassemblage.art",
+        "https://www.myassemblage.art",
+        "https://api.myassemblage.art",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000"
+    ]
+    all_origins = [origin.strip() for origin in cors_origins if origin.strip()] + default_origins
+    return all_origins
 
 # Global exception handlers to ensure CORS headers are set
 @app.exception_handler(HTTPException)
@@ -149,14 +375,19 @@ async def validate_image_url(url: str) -> bool:
         return image_cache[url]
     
     try:
-        # Create SSL context that ignores certificate verification
+        # Create secure SSL context for production
         import ssl
         ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
         
-        # Create connector with SSL context
-        connector = aiohttp.TCPConnector(ssl=ssl_context)
+        # In production, use strict SSL verification
+        if config.is_production:
+            # Use system default certificate verification
+            connector = aiohttp.TCPConnector(ssl=ssl_context)
+        else:
+            # In development, allow self-signed certificates for testing
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            connector = aiohttp.TCPConnector(ssl=ssl_context)
         
         # Use a longer timeout and more lenient validation
         timeout = aiohttp.ClientTimeout(total=10, connect=5)
@@ -209,31 +440,8 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
             detail=f"Registration failed: {str(e)}"
         )
 
-@app.post("/create-test-user", response_model=UserResponse)
-def create_test_user(db: Session = Depends(get_db)):
-    """Create a test user for development"""
-    try:
-        test_user_data = UserCreate(
-            username="testuser",
-            email="test@example.com",
-            password="testpass123"
-        )
-        return user_service.create_user(db, test_user_data)
-    except ValueError as e:
-        if "already registered" in str(e):
-            # User already exists, return existing user
-            existing_user = db.query(User).filter(User.username == "testuser").first()
-            if existing_user:
-                return UserResponse.model_validate(existing_user)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating test user: {str(e)}"
-        )
+# Test user creation endpoint removed for production security
+# This endpoint was used for development/testing only
 
 @app.options("/token")
 def token_options():
@@ -1092,7 +1300,7 @@ async def validate_artwork_images(
 
 @app.get("/health")
 def health_check():
-    """Health check endpoint"""
+    """Health check endpoint for Railway"""
     try:
         # Test database connection
         db = next(get_db())
@@ -1106,6 +1314,7 @@ def health_check():
             "timestamp": datetime.utcnow()
         }
     except Exception as e:
+        # Return degraded status instead of failing completely
         return {
             "status": "degraded",
             "message": "Art Explorer API is running",
@@ -1113,32 +1322,17 @@ def health_check():
             "timestamp": datetime.utcnow()
         }
 
-@app.get("/test")
-def test_endpoint():
-    """Simple test endpoint that doesn't require database"""
+@app.get("/startup-health")
+def startup_health_check():
+    """Simple health check that doesn't require database - for Railway startup"""
     return {
-        "message": "API is working!",
-        "cors": "enabled",
-        "timestamp": datetime.utcnow().isoformat(),
-        "allowed_origins": get_cors_origins()
+        "status": "starting",
+        "message": "Art Explorer API is starting up",
+        "timestamp": datetime.utcnow().isoformat()
     }
 
-@app.options("/test")
-def test_options():
-    """CORS preflight test endpoint"""
-    return {"message": "CORS preflight successful"}
-
-@app.get("/cors-debug")
-def cors_debug(request: Request):
-    """Debug CORS configuration"""
-    origin = request.headers.get("origin")
-    return {
-        "origin": origin,
-        "allowed_origins": get_cors_origins(),
-        "user_agent": request.headers.get("user-agent"),
-        "method": request.method,
-        "url": str(request.url)
-    }
+# Debug endpoints removed for production security
+# These endpoints were used for development/testing only
 
 @app.get("/placeholder/{source}.jpg")
 def get_placeholder_image(source: str):
@@ -1187,14 +1381,19 @@ async def optimize_image(
 ):
     """Optimize and serve image with specified parameters"""
     try:
-        # Create SSL context that ignores certificate verification
+        # Create secure SSL context for production
         import ssl
         ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
         
-        # Create connector with SSL context
-        connector = aiohttp.TCPConnector(ssl=ssl_context)
+        # In production, use strict SSL verification
+        if config.is_production:
+            # Use system default certificate verification
+            connector = aiohttp.TCPConnector(ssl=ssl_context)
+        else:
+            # In development, allow self-signed certificates for testing
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            connector = aiohttp.TCPConnector(ssl=ssl_context)
         
         # For now, just proxy the original image
         # In a full implementation, this would resize and optimize the image

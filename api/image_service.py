@@ -34,10 +34,17 @@ class ImageService:
         self.max_image_size = 1024 * 1024  # 1MB
         self.supported_formats = ['JPEG', 'PNG', 'WEBP']
         
-        # Create SSL context that bypasses certificate verification for art APIs
+        # Create SSL context - secure in production, lenient in development
         self.ssl_context = ssl.create_default_context()
-        self.ssl_context.check_hostname = False
-        self.ssl_context.verify_mode = ssl.CERT_NONE
+        
+        # In production, use strict SSL verification
+        if os.getenv("ENVIRONMENT", "development").lower() == "production":
+            # Use system default certificate verification
+            pass
+        else:
+            # In development, allow self-signed certificates for testing
+            self.ssl_context.check_hostname = False
+            self.ssl_context.verify_mode = ssl.CERT_NONE
         
         # Initialize Redis if available
         if REDIS_AVAILABLE:

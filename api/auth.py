@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
@@ -11,9 +12,19 @@ from database.models import User
 from api.schemas import TokenData
 
 # Security configuration
-SECRET_KEY = "your-secret-key-here"  # Change this in production
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+
+# Validate required environment variables
+if not SECRET_KEY:
+    if os.getenv("ENVIRONMENT", "development").lower() == "production":
+        raise ValueError("SECRET_KEY environment variable must be set in production!")
+    else:
+        # Only use default in development
+        SECRET_KEY = "dev-secret-key-change-in-production"
+        import warnings
+        warnings.warn("WARNING: Using default SECRET_KEY. Set SECRET_KEY environment variable in production!")
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

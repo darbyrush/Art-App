@@ -28,13 +28,18 @@ class ImageCacheService:
             if cached and cached.is_valid:
                 return cached
             
-            # Create SSL context that ignores certificate verification
+            # Create SSL context - secure in production, lenient in development
             ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
             
-            # Create connector with SSL context
-            connector = aiohttp.TCPConnector(ssl=ssl_context)
+            # In production, use strict SSL verification
+            if os.getenv("ENVIRONMENT", "development").lower() == "production":
+                # Use system default certificate verification
+                connector = aiohttp.TCPConnector(ssl=ssl_context)
+            else:
+                # In development, allow self-signed certificates for testing
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+                connector = aiohttp.TCPConnector(ssl=ssl_context)
             
             # Download image
             async with aiohttp.ClientSession(connector=connector) as session:

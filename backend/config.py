@@ -20,6 +20,60 @@ class Config:
                         os.environ[key.strip()] = value.strip()
     
     @property
+    def environment(self) -> str:
+        """Get current environment"""
+        return os.getenv("ENVIRONMENT", "development")
+    
+    @property
+    def is_production(self) -> bool:
+        """Check if running in production"""
+        return self.environment.lower() == "production"
+    
+    @property
+    def secret_key(self) -> str:
+        """Get secret key for JWT tokens"""
+        key = os.getenv("SECRET_KEY")
+        if not key and self.is_production:
+            raise ValueError("SECRET_KEY must be set in production")
+        return key or "dev-secret-key-change-in-production"
+    
+    @property
+    def cors_origins(self) -> list:
+        """Get CORS origins"""
+        origins = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+        return [origin.strip() for origin in origins.split(",")]
+    
+    @property
+    def database_url(self) -> str:
+        """Get database URL"""
+        return os.getenv("DATABASE_URL", "sqlite:///./art_explorer.db")
+    
+    @property
+    def redis_url(self) -> str:
+        """Get Redis URL"""
+        return os.getenv("REDIS_URL", "redis://localhost:6379")
+    
+    @property
+    def max_upload_size(self) -> int:
+        """Get maximum upload size in bytes (default: 10MB)"""
+        return int(os.getenv("MAX_UPLOAD_SIZE", "10485760"))
+    
+    @property
+    def rate_limit_requests(self) -> int:
+        """Get rate limit requests per minute"""
+        return int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
+    
+    @property
+    def rate_limit_window(self) -> int:
+        """Get rate limit window in seconds"""
+        return int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+    
+    @property
+    def log_level(self) -> str:
+        """Get log level"""
+        return os.getenv("LOG_LEVEL", "INFO" if self.is_production else "DEBUG")
+    
+    @property
     def smithsonian_api_key(self) -> Optional[str]:
         """Get Smithsonian API key from environment variable"""
         return os.getenv("SMITHSONIAN_API_KEY")
@@ -80,6 +134,27 @@ class Config:
         return {
             "missing_keys": missing_keys,
             "available_keys": available_keys
+        }
+    
+    def validate_production_config(self) -> dict:
+        """Validate production configuration"""
+        errors = []
+        warnings = []
+        
+        if self.is_production:
+            if not self.secret_key or self.secret_key == "dev-secret-key-change-in-production":
+                errors.append("SECRET_KEY must be set in production")
+            
+            if not self.database_url.startswith("postgresql"):
+                warnings.append("Consider using PostgreSQL in production")
+            
+            if not self.redis_url.startswith("redis://"):
+                warnings.append("Consider using Redis in production for caching")
+        
+        return {
+            "errors": errors,
+            "warnings": warnings,
+            "is_valid": len(errors) == 0
         }
 
 # Global config instance
