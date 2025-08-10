@@ -50,6 +50,9 @@ USER appuser
 # Add local Python packages to PATH
 ENV PATH=/home/appuser/.local/bin:$PATH
 
+# Set Python path to include the current directory
+ENV PYTHONPATH=/app
+
 # Expose port (Railway will set the actual port via $PORT)
 EXPOSE 8000
 
