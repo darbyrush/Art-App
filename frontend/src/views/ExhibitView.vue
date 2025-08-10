@@ -21,7 +21,7 @@
       
       <!-- Filter Panel -->
       <transition name="slide-down">
-        <div v-if="showFilters" class="border-t border-gray-200 bg-gray-50">
+        <div v-if="showFilters && isInitialized" class="border-t border-gray-200 bg-gray-50">
           <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
             <div class="space-y-3">
               <!-- Source Filter -->
@@ -31,7 +31,7 @@
                   <button
                     @click="toggleSourceFilter('all')"
                     class="px-2 py-1 text-xs rounded-full border transition-colors"
-                    :class="selectedSources.includes('all') 
+                    :class="safeSelectedSources.includes('all') 
                       ? 'bg-blue-100 border-blue-300 text-blue-700' 
                       : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'"
                   >
@@ -42,7 +42,7 @@
                     :key="source.key"
                     @click="toggleSourceFilter(source.key)"
                     class="px-2 py-1 text-xs rounded-full border transition-colors"
-                    :class="selectedSources.includes(source.key)
+                    :class="safeSelectedSources.includes(source.key)
                       ? 'bg-blue-100 border-blue-300 text-blue-700' 
                       : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'"
                   >
@@ -110,7 +110,7 @@
             <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
           </svg>
           <span>
-            Showing {{ selectedSources.includes('all') ? 'all sources' : selectedSources.join(', ') }} 
+            Showing {{ safeSelectedSources.includes('all') ? 'all sources' : safeSelectedSources.join(', ') }} 
             {{ sortBy !== 'random' ? `• sorted by ${sortOptions.find(o => o.key === sortBy)?.name || sortBy}` : '' }}
           </span>
         </div>
@@ -253,6 +253,7 @@ const selectedSources = ref(['all'])
 const sortBy = ref('random')
 const imageLoading = ref({})
 const isLoadingMore = ref(false)
+const isInitialized = ref(false)
 
 // Filter state
 const showFilters = ref(false)
@@ -290,7 +291,16 @@ const sortOptions = computed(() => [
 
 // Check if any filters are active
 const hasActiveFilters = computed(() => {
+  // Safety check - ensure selectedSources.value is defined
+  if (!selectedSources.value) {
+    return false
+  }
   return !selectedSources.value.includes('all') || sortBy.value !== 'random'
+})
+
+// Safe access to selectedSources for template
+const safeSelectedSources = computed(() => {
+  return selectedSources.value || ['all']
 })
 
 // Methods
@@ -301,7 +311,7 @@ const loadMoreArtworks = async () => {
     isLoadingMore.value = true
     const response = await artworkStore.getGalleryArtworks({
       page: page.value,
-      sources: selectedSources.value,
+      sources: selectedSources.value || ['all'],
       sort_by: sortBy.value
     })
     
@@ -412,6 +422,11 @@ const getSourceDisplayName = (source) => {
 
 // Filter methods
 const toggleSourceFilter = (source) => {
+  // Safety check - ensure selectedSources.value is defined
+  if (!selectedSources.value) {
+    selectedSources.value = ['all']
+  }
+  
   if (source === 'all') {
     selectedSources.value = ['all']
   } else {
@@ -443,7 +458,12 @@ const setSortBy = (sort) => {
 }
 
 const clearFilters = () => {
-  selectedSources.value = ['all']
+  // Safety check - ensure selectedSources.value is defined
+  if (!selectedSources.value) {
+    selectedSources.value = ['all']
+  } else {
+    selectedSources.value = ['all']
+  }
   sortBy.value = 'random'
   resetAndReload()
 }
@@ -499,6 +519,7 @@ onMounted(() => {
   // Setup intersection observer after initial load
   nextTick(() => {
     setupIntersectionObserver()
+    isInitialized.value = true
   })
 })
 
