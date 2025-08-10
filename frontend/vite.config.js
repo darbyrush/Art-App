@@ -21,7 +21,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    minify: 'terser',
+    minify: 'esbuild',
     rollupOptions: {
       output: {
         manualChunks: {
@@ -29,12 +29,6 @@ export default defineConfig({
           ui: ['@headlessui/vue', '@heroicons/vue'],
           utils: ['axios']
         }
-      }
-    },
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true
       }
     }
   },
