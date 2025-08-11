@@ -218,6 +218,41 @@ async def options_handler(full_path: str):
     """Handle OPTIONS requests for all endpoints"""
     return {"message": "Endpoint supports CORS preflight"}
 
+# Specific OPTIONS handler for auth endpoints
+@app.options("/auth/login")
+async def auth_login_options():
+    """Handle OPTIONS requests for auth/login endpoint"""
+    return {
+        "message": "Auth login endpoint supports CORS preflight",
+        "methods": ["POST", "OPTIONS"],
+        "headers": ["content-type", "authorization"]
+    }
+
+@app.options("/auth/register")
+async def auth_register_options():
+    """Handle OPTIONS requests for auth/register endpoint"""
+    return {
+        "message": "Auth register endpoint supports CORS preflight",
+        "methods": ["POST", "OPTIONS"],
+        "headers": ["content-type"]
+    }
+
+@app.post("/auth/login", response_model=Token)
+def auth_login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    """Login endpoint that the frontend expects - redirects to /token logic"""
+    return login_for_access_token(form_data, db)
+
+@app.post("/auth/register", response_model=UserResponse)
+def auth_register(
+    user: UserCreate, 
+    db: Session = Depends(get_db)
+):
+    """Register endpoint that the frontend expects - redirects to /register logic"""
+    return register_user(user, db)
+
 # Add trusted host middleware for production (simplified for now)
 # if config.is_production:
 #     app.add_middleware(
@@ -1425,6 +1460,19 @@ def test_endpoint():
         "process_id": os.getpid(),
         "startup_complete": _startup_complete,
         "status": "ok"
+    }
+
+@app.get("/test/auth")
+def test_auth_endpoint():
+    """Test endpoint to verify auth routing is working"""
+    return {
+        "message": "Auth endpoints are accessible",
+        "endpoints": {
+            "login": "/auth/login",
+            "register": "/auth/register",
+            "token": "/token"
+        },
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 @app.get("/placeholder/{source}.jpg")
