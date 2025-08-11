@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import Response
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime, timedelta
