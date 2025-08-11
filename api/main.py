@@ -201,9 +201,21 @@ def get_cors_origins():
     cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
     default_origins = [
         "https://myassemblage.art",
-        "https://www.myassemblage.art"
+        "https://www.myassemblage.art",
+        "http://localhost:3000",  # Development
+        "http://localhost:5173",  # Vite dev server
+        "https://localhost:3000", # HTTPS dev
+        "https://localhost:5173"  # HTTPS Vite dev
     ]
     all_origins = [origin.strip() for origin in cors_origins if origin.strip()] + default_origins
+    
+    # Add Vercel preview domains if in production
+    if os.getenv("ENVIRONMENT") == "production":
+        all_origins.extend([
+            "https://*.vercel.app",  # Vercel preview deployments
+            "https://*.vercel.app",  # Vercel production
+        ])
+    
     return all_origins
 
 # Add CORS middleware with proper configuration
@@ -219,42 +231,152 @@ app.add_middleware(
 @app.options("/{full_path:path}")
 async def options_handler(full_path: str):
     """Handle OPTIONS requests for all endpoints"""
-    return {"message": "Endpoint supports CORS preflight"}
+    from fastapi.responses import Response
+    response = Response(
+        content="",
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",  # Allow all origins for now
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "content-type, authorization, x-requested-with",
+            "Access-Control-Max-Age": "86400",  # Cache preflight for 24 hours
+        }
+    )
+    return response
 
 # Specific OPTIONS handler for auth endpoints
 @app.options("/auth/login")
 async def auth_login_options():
     """Handle OPTIONS requests for auth/login endpoint"""
-    return {
-        "message": "Auth login endpoint supports CORS preflight",
-        "methods": ["POST", "OPTIONS"],
-        "headers": ["content-type", "authorization"]
-    }
+    from fastapi.responses import Response
+    response = Response(
+        content="",
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",  # Allow all origins for now
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "content-type, authorization",
+            "Access-Control-Max-Age": "86400",  # Cache preflight for 24 hours
+        }
+    )
+    return response
 
 @app.options("/auth/register")
 async def auth_register_options():
     """Handle OPTIONS requests for auth/register endpoint"""
-    return {
-        "message": "Auth register endpoint supports CORS preflight",
-        "methods": ["POST", "OPTIONS"],
-        "headers": ["content-type"]
-    }
+    from fastapi.responses import Response
+    response = Response(
+        content="",
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",  # Allow all origins for now
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "content-type",
+            "Access-Control-Max-Age": "86400",  # Cache preflight for 24 hours
+        }
+    )
+    return response
 
-@app.post("/auth/login", response_model=Token)
+@app.post("/auth/login")
 def auth_login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
-    """Login endpoint that the frontend expects - redirects to /token logic"""
-    return login_for_access_token(form_data, db)
+    """Login endpoint that the frontend expects - returns proper response format"""
+    try:
+        # Create user service instance
+        user_service = UserService()
+        
+        # Authenticate user
+        user = user_service.authenticate_user(db, form_data.username, form_data.password)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Create access token
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.username}, expires_delta=access_token_expires
+        )
+        
+        # Return response in format frontend expects
+        return {
+            "access_token": access_token, 
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "profile_picture": user.profile_picture,
+                "created_at": user.created_at.isoformat() if user.created_at else None
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Login failed: {str(e)}"
+        )
 
-@app.post("/auth/register", response_model=UserResponse)
+@app.post("/auth/register")
 def auth_register(
     user: UserCreate, 
     db: Session = Depends(get_db)
 ):
-    """Register endpoint that the frontend expects - redirects to /register logic"""
-    return register_user(user, db)
+    """Register endpoint that the frontend expects - returns proper response format"""
+    try:
+        # Create user service instance
+        user_service = UserService()
+        
+        # Check if username already exists
+        existing_user = db.query(User).filter(User.username == user.username).first()
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already registered"
+            )
+        
+        # Create new user
+        hashed_password = get_password_hash(user.password)
+        db_user = User(
+            username=user.username,
+            email=user.email,
+            hashed_password=hashed_password
+        )
+        
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        
+        # Create access token for auto-login
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": db_user.username}, expires_delta=access_token_expires
+        )
+        
+        # Return response in format frontend expects
+        return {
+            "access_token": access_token,
+            "user": {
+                "id": db_user.id,
+                "username": db_user.username,
+                "email": db_user.email,
+                "profile_picture": db_user.profile_picture,
+                "created_at": db_user.created_at.isoformat() if db_user.created_at else None
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
+        )
 
 # Add trusted host middleware for production (simplified for now)
 # if config.is_production:
