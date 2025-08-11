@@ -11,20 +11,9 @@ import time
 import logging
 from typing import List, Optional
 
-# Import schemas and models - use relative imports that work in both development and production
+# Import schemas and models - use the correct import paths for production
 try:
-    from database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
-    from database.config import get_db, init_db, test_connection
-    from schemas import (
-        UserCreate, UserResponse, UserUpdate, UserLikeCreate, UserRatingCreate, 
-        UserNoteCreate, BoardCreate, BoardResponse, BoardUpdate, BoardArtworkCreate,
-        ArtworkResponse, Token
-    )
-    from services import UserService
-    from auth import get_current_user, create_access_token, get_password_hash
-    from cors_config import get_cors_middleware
-except ImportError:
-    # Fallback for production deployment
+    # Try production imports first (when running in Docker container)
     from api.database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
     from api.database.config import get_db, init_db, test_connection
     from api.schemas import (
@@ -35,6 +24,24 @@ except ImportError:
     from api.services import UserService
     from api.auth import get_current_user, create_access_token, get_password_hash
     from api.cors_config import get_cors_middleware
+    logging.info("✅ Using production import paths")
+except ImportError:
+    try:
+        # Fallback to development imports (when running locally)
+        from database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
+        from database.config import get_db, init_db, test_connection
+        from schemas import (
+            UserCreate, UserResponse, UserUpdate, UserLikeCreate, UserRatingCreate, 
+            UserNoteCreate, BoardCreate, BoardResponse, BoardUpdate, BoardArtworkCreate,
+            ArtworkResponse, Token
+        )
+        from services import UserService
+        from auth import get_current_user, create_access_token, get_password_hash
+        from cors_config import get_cors_middleware
+        logging.info("✅ Using development import paths")
+    except ImportError as e:
+        logging.error(f"❌ All import attempts failed: {e}")
+        raise
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

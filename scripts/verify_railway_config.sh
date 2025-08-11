@@ -67,6 +67,20 @@ else
     echo "❌ Does not use uvicorn"
 fi
 
+# Check if it changes to api directory before running
+if grep -q "cd /app/api" docker/Dockerfile.backend; then
+    echo "✅ Changes to api directory before running uvicorn"
+else
+    echo "❌ Does not change to api directory before running uvicorn"
+fi
+
+# Check if it runs main:app instead of api.main:app
+if grep -q "main:app" docker/Dockerfile.backend; then
+    echo "✅ Runs main:app (correct for api directory)"
+else
+    echo "❌ Does not run main:app"
+fi
+
 echo ""
 echo "🔍 Checking main.py configuration..."
 
@@ -82,6 +96,19 @@ if grep -q "os.getenv(\"PORT\"" api/main.py; then
     echo "✅ main.py handles PORT environment variable"
 else
     echo "❌ main.py does not handle PORT environment variable"
+fi
+
+# Check if main.py has proper import fallbacks
+if grep -q "from api.database.models import" api/main.py; then
+    echo "✅ main.py has production import paths"
+else
+    echo "❌ main.py missing production import paths"
+fi
+
+if grep -q "from database.models import" api/main.py; then
+    echo "✅ main.py has development import paths"
+else
+    echo "❌ main.py missing development import paths"
 fi
 
 echo ""
@@ -107,6 +134,8 @@ echo "2. ✅ main.py has health endpoint and PORT handling"
 echo "3. ✅ railway.json points to correct files"
 echo "4. ✅ Health check endpoint is /health"
 echo "5. ✅ Port configuration uses PORT environment variable"
+echo "6. ✅ Import paths work in both development and production"
+echo "7. ✅ Dockerfile changes to api directory before running uvicorn"
 
 echo ""
 echo "🚀 To deploy to Railway:"
@@ -119,3 +148,4 @@ echo "1. Check Railway logs: railway logs"
 echo "2. Check Railway status: railway status"
 echo "3. Verify environment variables in Railway dashboard"
 echo "4. Check if the /health endpoint responds: curl https://your-app.railway.app/health"
+echo "5. Verify import paths work in container environment"
