@@ -149,6 +149,17 @@ async def startup_event():
 # Mount static files for serving uploaded profile pictures
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+def get_cors_origins():
+    """Get allowed CORS origins from environment or defaults"""
+    import os
+    cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
+    default_origins = [
+        "https://myassemblage.art",
+        "https://www.myassemblage.art"
+    ]
+    all_origins = [origin.strip() for origin in cors_origins if origin.strip()] + default_origins
+    return all_origins
+
 # Add CORS middleware with proper configuration
 app.add_middleware(
     CORSMiddleware,
@@ -291,17 +302,6 @@ async def input_validation_middleware(request: Request, call_next):
     
     # Continue with request
     return await call_next(request)
-
-def get_cors_origins():
-    """Get allowed CORS origins from environment or defaults"""
-    import os
-    cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
-    default_origins = [
-        "https://myassemblage.art",
-        "https://www.myassemblage.art"
-    ]
-    all_origins = [origin.strip() for origin in cors_origins if origin.strip()] + default_origins
-    return all_origins
 
 # Global exception handlers to ensure CORS headers are set
 @app.exception_handler(HTTPException)
