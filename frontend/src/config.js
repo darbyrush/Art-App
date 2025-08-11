@@ -1,5 +1,6 @@
 // Configuration for the application
-// Updated for Railway backend deployment - Force Vercel redeploy
+// CRITICAL: Railway backend deployment - Force Vercel redeploy NOW
+// Version: 2024-01-XX - Railway Backend Integration
 export const config = {
   // API base URL - use Railway backend URL
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'https://art-app-production.up.railway.app',
