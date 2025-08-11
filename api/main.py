@@ -298,9 +298,7 @@ def get_cors_origins():
     cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
     default_origins = [
         "https://myassemblage.art",
-        "https://www.myassemblage.art",
-        "https://art-app-frontend.vercel.app",
-        "https://*.vercel.app"
+        "https://www.myassemblage.art"
     ]
     all_origins = [origin.strip() for origin in cors_origins if origin.strip()] + default_origins
     return all_origins
