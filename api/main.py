@@ -67,6 +67,8 @@ def validate_production_environment():
 # Global startup flag to prevent multiple initializations
 _startup_complete = False
 
+# FORCE REDEPLOYMENT: Railway deployment fix - single process, proper routing, startup robustness
+
 # Validate environment before starting
 try:
     validate_production_environment()
@@ -118,6 +120,7 @@ async def startup_event():
     logger.info(f"🔧 Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
     logger.info(f"🔌 Port: {os.getenv('PORT', '8000')}")
     logger.info(f"🆔 Process ID: {os.getpid()}")
+    logger.info("🔧 FORCE REDEPLOYMENT: Railway deployment fix applied")
     
     # Validate production configuration
     if config.is_production:
