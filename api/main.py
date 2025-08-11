@@ -152,11 +152,17 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 # Add CORS middleware with proper configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for now
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Global OPTIONS handler for all endpoints
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    """Handle OPTIONS requests for all endpoints"""
+    return {"message": "Endpoint supports CORS preflight"}
 
 # Add trusted host middleware for production (simplified for now)
 # if config.is_production:
@@ -293,7 +299,8 @@ def get_cors_origins():
     default_origins = [
         "https://myassemblage.art",
         "https://www.myassemblage.art",
-        "https://api.myassemblage.art"
+        "https://art-app-frontend.vercel.app",
+        "https://*.vercel.app"
     ]
     all_origins = [origin.strip() for origin in cors_origins if origin.strip()] + default_origins
     return all_origins
