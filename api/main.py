@@ -385,6 +385,42 @@ def auth_register(
 #         allowed_hosts=["myassemblage.art", "www.myassemblage.art", "localhost"]
 #     )
 
+# Root endpoint and API info
+@app.get("/")
+def root_endpoint():
+    """Root endpoint - API information and status"""
+    return {
+        "message": "Art Explorer API",
+        "version": "1.0.0",
+        "status": "running",
+        "environment": os.getenv("ENVIRONMENT", "unknown"),
+        "timestamp": datetime.utcnow().isoformat(),
+        "endpoints": {
+            "health": "/health",
+            "ready": "/ready",
+            "test": "/test",
+            "auth": {
+                "login": "/auth/login",
+                "register": "/auth/register"
+            },
+            "artworks": "/artworks",
+            "users": "/users/me",
+            "boards": "/boards"
+        }
+    }
+
+@app.get("/api")
+def api_info():
+    """API information endpoint"""
+    return {
+        "name": "Art Explorer API",
+        "version": "1.0.0",
+        "description": "Production-ready Art Explorer API with enhanced security and performance",
+        "status": "healthy",
+        "environment": os.getenv("ENVIRONMENT", "unknown"),
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
 # Add security headers middleware
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -393,6 +429,9 @@ async def add_security_headers(request: Request, call_next):
     
     # Add request ID for tracking
     request_id = request.headers.get("X-Request-ID", f"req_{int(start_time * 1000)}")
+    
+    # Log all incoming requests for debugging
+    logger.info(f"🔍 Incoming request: {request.method} {request.url.path} from {request.client.host if request.client else 'unknown'}")
     
     response = await call_next(request)
     
@@ -409,8 +448,8 @@ async def add_security_headers(request: Request, call_next):
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
     
-    # Log request
-    logger.info(f"{request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
+    # Log request completion
+    logger.info(f"✅ Request completed: {request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
     
     return response
 
