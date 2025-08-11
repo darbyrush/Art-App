@@ -170,8 +170,10 @@ def init_db():
 def test_connection():
     """Test database connection"""
     try:
+        from sqlalchemy import text
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
+            conn.commit()
         logger.info("Database connection test successful")
         return True
     except Exception as e:
