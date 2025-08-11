@@ -14,8 +14,8 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for better caching
 COPY backend/requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Install Python dependencies globally to avoid PATH issues
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Production stage
 FROM python:3.12-slim
@@ -33,8 +33,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Copy Python packages from builder
-COPY --from=builder /root/.local /home/appuser/.local
+# Copy Python packages from builder (global installation)
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY . .
@@ -47,18 +48,16 @@ RUN mkdir -p uploads/profile_pictures logs \
 # Switch to non-root user
 USER appuser
 
-# Add local Python packages to PATH
-ENV PATH=/home/appuser/.local/bin:$PATH
-
 # Set Python path to include the current directory
 ENV PYTHONPATH=/app
 
 # Expose port (Railway will set the actual port via $PORT)
 EXPOSE 8000
 
-# Health check (use fixed port for health check)
+# Health check (use the PORT environment variable that Railway sets)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/ready || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 # Use exec form to prevent shell expansion issues and ensure single process
+# Railway sets PORT environment variable, so we use that
 CMD exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 

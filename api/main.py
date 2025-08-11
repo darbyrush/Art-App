@@ -11,16 +11,30 @@ import time
 import logging
 from typing import List, Optional
 
-# Import schemas and models
-from database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
-from database.config import get_db, init_db, test_connection
-from api.schemas import (
-    UserCreate, UserResponse, UserUpdate, UserLikeCreate, UserRatingCreate, 
-    UserNoteCreate, BoardCreate, BoardResponse, BoardUpdate, BoardArtworkCreate,
-    ArtworkResponse, Token
-)
-from api.services import UserService
-from api.auth import get_current_user, create_access_token, get_password_hash
+# Import schemas and models - use relative imports that work in both development and production
+try:
+    from database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
+    from database.config import get_db, init_db, test_connection
+    from schemas import (
+        UserCreate, UserResponse, UserUpdate, UserLikeCreate, UserRatingCreate, 
+        UserNoteCreate, BoardCreate, BoardResponse, BoardUpdate, BoardArtworkCreate,
+        ArtworkResponse, Token
+    )
+    from services import UserService
+    from auth import get_current_user, create_access_token, get_password_hash
+    from cors_config import get_cors_middleware
+except ImportError:
+    # Fallback for production deployment
+    from api.database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
+    from api.database.config import get_db, init_db, test_connection
+    from api.schemas import (
+        UserCreate, UserResponse, UserUpdate, UserLikeCreate, UserRatingCreate, 
+        UserNoteCreate, BoardCreate, BoardResponse, BoardUpdate, BoardArtworkCreate,
+        ArtworkResponse, Token
+    )
+    from api.services import UserService
+    from api.auth import get_current_user, create_access_token, get_password_hash
+    from api.cors_config import get_cors_middleware
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,14 +47,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Simple CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for now
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Add proper CORS middleware
+app.add_middleware(get_cors_middleware())
 
 # Simple startup event
 @app.on_event("startup")
@@ -215,4 +223,14 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+    
+    # Get port from environment variable (Railway sets this) or default to 8000
+    port = int(os.getenv("PORT", 8000))
+    
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=port,
+        log_level="info"
+    )
