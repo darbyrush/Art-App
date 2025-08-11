@@ -13,7 +13,7 @@ from typing import List, Optional
 
 # Import schemas and models
 from database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
-from database.config_simple import get_db, init_db, test_connection
+from database.config import get_db, init_db, test_connection
 from api.schemas import (
     UserCreate, UserResponse, UserUpdate, UserLikeCreate, UserRatingCreate, 
     UserNoteCreate, BoardCreate, BoardResponse, BoardUpdate, BoardArtworkCreate,
