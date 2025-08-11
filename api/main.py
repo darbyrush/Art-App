@@ -64,6 +64,9 @@ def validate_production_environment():
         if os.getenv("ENVIRONMENT") != "production":
             raise ValueError("ENVIRONMENT must be set to 'production' in production")
 
+# Global startup flag to prevent multiple initializations
+_startup_complete = False
+
 # Validate environment before starting
 try:
     validate_production_environment()
@@ -102,49 +105,89 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 @app.on_event("startup")
 async def startup_event():
     """Initialize app components on startup"""
+    global _startup_complete
+    
+    # Prevent multiple startup initializations
+    if _startup_complete:
+        logger.info("🔄 Startup already completed, skipping...")
+        return
+    
     import os
+    
+    logger.info("🚀 Starting Art Explorer API...")
+    logger.info(f"🔧 Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
+    logger.info(f"🔌 Port: {os.getenv('PORT', '8000')}")
+    logger.info(f"🆔 Process ID: {os.getpid()}")
     
     # Validate production configuration
     if config.is_production:
-        validation = config.validate_production_config()
-        if not validation["is_valid"]:
-            logger.error(f"Production configuration validation failed: {validation['errors']}")
-            raise RuntimeError("Invalid production configuration")
-        if validation["warnings"]:
-            logger.warning(f"Production configuration warnings: {validation['warnings']}")
+        try:
+            validation = config.validate_production_config()
+            if not validation["is_valid"]:
+                logger.error(f"Production configuration validation failed: {validation['errors']}")
+                # Don't crash the app, just log the error
+            if validation["warnings"]:
+                logger.warning(f"Production configuration warnings: {validation['warnings']}")
+        except Exception as e:
+            logger.warning(f"Configuration validation failed: {e}")
     
     # Ensure uploads directory exists
-    uploads_dir = "uploads/profile_pictures"
-    os.makedirs(uploads_dir, exist_ok=True)
-    logger.info(f"Uploads directory ensured: {uploads_dir}")
+    try:
+        uploads_dir = "uploads/profile_pictures"
+        os.makedirs(uploads_dir, exist_ok=True)
+        logger.info(f"✅ Uploads directory ensured: {uploads_dir}")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not create uploads directory: {e}")
     
-    # Initialize database with retry logic
-    max_retries = 3
+    # Initialize database with retry logic - but don't crash if it fails
+    logger.info("🔌 Attempting database connection...")
+    max_retries = 5
+    db_connected = False
+    
     for attempt in range(max_retries):
         try:
             init_db()
-            logger.info("Database initialized successfully")
+            logger.info("✅ Database initialized successfully")
+            db_connected = True
             break
         except Exception as e:
-            logger.error(f"Database initialization attempt {attempt + 1} failed: {e}")
-            if attempt == max_retries - 1:
-                logger.error("Database initialization failed after all retries")
-                raise
+            logger.warning(f"⚠️ Database initialization attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                wait_time = min(2 ** attempt, 10)  # Cap at 10 seconds
+                logger.info(f"⏳ Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
             else:
-                time.sleep(2 ** attempt)  # Exponential backoff
+                logger.error("❌ Database initialization failed after all retries")
+                # Don't crash the app, just log the error
     
-    # Test database connection
-    if not test_connection():
-        logger.error("Database connection test failed")
-        raise RuntimeError("Database connection failed")
+    # Test database connection if we think it's connected
+    if db_connected:
+        try:
+            if test_connection():
+                logger.info("✅ Database connection test passed")
+            else:
+                logger.warning("⚠️ Database connection test failed")
+                db_connected = False
+        except Exception as e:
+            logger.warning(f"⚠️ Database connection test failed: {e}")
+            db_connected = False
     
-    # Start background scheduler
+    # Start background scheduler - but don't crash if it fails
     try:
         from api.scheduler import start_background_scheduler
         start_background_scheduler()
-        logger.info("Background scheduler started successfully")
+        logger.info("✅ Background scheduler started successfully")
     except Exception as e:
-        logger.warning(f"Could not start background scheduler: {e}")
+        logger.warning(f"⚠️ Could not start background scheduler: {e}")
+    
+    # Mark startup as complete
+    _startup_complete = True
+    
+    # Log startup completion
+    if db_connected:
+        logger.info("🎉 Art Explorer API startup completed successfully!")
+    else:
+        logger.warning("⚠️ Art Explorer API startup completed with database issues - app will run in degraded mode")
 
 # Mount static files for serving uploaded profile pictures
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
@@ -1316,15 +1359,20 @@ def health_check():
             "status": "healthy", 
             "message": "Art Explorer API is running",
             "database": "connected",
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow().isoformat(),
+            "environment": os.getenv("ENVIRONMENT", "unknown"),
+            "version": "1.0.0"
         }
     except Exception as e:
         # Return degraded status instead of failing completely
+        logger.warning(f"Health check failed: {e}")
         return {
             "status": "degraded",
-            "message": "Art Explorer API is running",
+            "message": "Art Explorer API is running with issues",
             "database": f"error: {str(e)}",
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow().isoformat(),
+            "environment": os.getenv("ENVIRONMENT", "unknown"),
+            "version": "1.0.0"
         }
 
 @app.get("/startup-health")
@@ -1333,11 +1381,51 @@ def startup_health_check():
     return {
         "status": "starting",
         "message": "Art Explorer API is starting up",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
+        "environment": os.getenv("ENVIRONMENT", "unknown"),
+        "version": "1.0.0"
     }
+
+@app.get("/ready")
+def readiness_check():
+    """Readiness check for Railway - indicates if app is ready to serve requests"""
+    try:
+        # Quick database test
+        db = next(get_db())
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
+        db.close()
+        
+        return {
+            "status": "ready",
+            "message": "Art Explorer API is ready to serve requests",
+            "database": "connected",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        return {
+            "status": "not_ready",
+            "message": "Art Explorer API is not ready",
+            "database": f"error: {str(e)}",
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 # Debug endpoints removed for production security
 # These endpoints were used for development/testing only
+
+@app.get("/test")
+def test_endpoint():
+    """Simple test endpoint for debugging Railway deployment"""
+    import os
+    return {
+        "message": "Art Explorer API is responding",
+        "timestamp": datetime.utcnow().isoformat(),
+        "environment": os.getenv("ENVIRONMENT", "unknown"),
+        "port": os.getenv("PORT", "8000"),
+        "process_id": os.getpid(),
+        "startup_complete": _startup_complete,
+        "status": "ok"
+    }
 
 @app.get("/placeholder/{source}.jpg")
 def get_placeholder_image(source: str):

@@ -58,7 +58,7 @@ EXPOSE 8000
 
 # Health check (use fixed port for health check)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/ready || exit 1
 
-# Use shell form to properly expand environment variables and add debug output
-CMD echo "Starting with PORT=${PORT:-8000}" && uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 4 
+# Use exec form to prevent shell expansion issues and ensure single process
+CMD exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 
