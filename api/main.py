@@ -54,19 +54,27 @@ async def startup_event():
         os.makedirs(uploads_dir, exist_ok=True)
         logger.info(f"✅ Uploads directory ensured: {uploads_dir}")
         
-        # Initialize database
-        init_db()
-        logger.info("✅ Database initialized successfully")
+        # Initialize database - but don't crash if it fails
+        try:
+            init_db()
+            logger.info("✅ Database initialized successfully")
+        except Exception as e:
+            logger.warning(f"⚠️ Database initialization failed: {e}")
+            logger.info("🔄 Continuing without database initialization")
         
-        # Test connection
-        if test_connection():
-            logger.info("✅ Database connection test passed")
-        else:
-            logger.warning("⚠️ Database connection test failed")
+        # Test connection - but don't crash if it fails
+        try:
+            if test_connection():
+                logger.info("✅ Database connection test passed")
+            else:
+                logger.warning("⚠️ Database connection test failed")
+        except Exception as e:
+            logger.warning(f"⚠️ Database connection test failed: {e}")
+            logger.info("🔄 Continuing without database connection")
             
     except Exception as e:
         logger.error(f"❌ Startup error: {e}")
-        # Continue anyway - don't crash the app
+        logger.info("🔄 Continuing anyway - don't crash the app")
     
     logger.info("🎉 Art Explorer API startup completed!")
 
@@ -115,6 +123,9 @@ def auth_login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
                 "email": user.email
             }
         }
+    except ImportError as e:
+        logger.error(f"Import error in login: {e}")
+        raise HTTPException(status_code=500, detail="Service temporarily unavailable")
     except Exception as e:
         logger.error(f"Login error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -151,6 +162,9 @@ def auth_register(user: UserCreate, db: Session = Depends(get_db)):
                 "email": db_user.email
             }
         }
+    except ImportError as e:
+        logger.error(f"Import error in register: {e}")
+        raise HTTPException(status_code=500, detail="Service temporarily unavailable")
     except Exception as e:
         logger.error(f"Registration error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

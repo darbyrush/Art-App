@@ -31,11 +31,16 @@ def get_db():
 def init_db():
     """Initialize database tables"""
     try:
+        # Defer import to avoid circular import issues
         from database.models import Base
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created successfully")
+    except ImportError as e:
+        logger.warning(f"Could not import database models: {e}")
+        logger.info("Database initialization skipped - models not available")
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
+        logger.info("Database initialization failed - continuing anyway")
 
 def test_connection():
     """Test database connection"""
