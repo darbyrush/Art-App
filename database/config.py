@@ -109,23 +109,36 @@ if DATABASE_URL.startswith("sqlite"):
     )
     logger.info("Using SQLite database for development")
 else:
-    # PostgreSQL configuration for production - optimized
+    # PostgreSQL configuration for production - Railway optimized
     try:
+        # Railway-specific optimizations
         engine = create_engine(
             DATABASE_URL,
             pool_pre_ping=True,
-            pool_recycle=300,  # Recycle connections every 5 minutes
-            pool_size=10,      # Increased pool size for production
-            max_overflow=20,   # Increased overflow for production
-            pool_timeout=30,   # Connection timeout
+            pool_recycle=600,      # Recycle connections every 10 minutes (Railway friendly)
+            pool_size=5,           # Reduced pool size for Railway (more conservative)
+            max_overflow=10,       # Reduced overflow for Railway
+            pool_timeout=60,       # Increased connection timeout for Railway
             echo=False,
             connect_args={
-                "connect_timeout": 10,
-                "application_name": "art_app",
-                "options": "-c timezone=UTC -c statement_timeout=30000 -c idle_in_transaction_session_timeout=300000"
+                "connect_timeout": 30,        # Increased from 10s to 30s for Railway
+                "application_name": "art_app_railway",
+                "options": "-c timezone=UTC -c statement_timeout=60000 -c idle_in_transaction_session_timeout=600000"
             }
         )
-        logger.info("Using PostgreSQL database for production")
+        logger.info("Using PostgreSQL database for Railway production")
+        
+        # Test the connection immediately to catch issues early
+        try:
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+                conn.commit()
+            logger.info("✅ Initial database connection test successful")
+        except Exception as e:
+            logger.warning(f"⚠️ Initial connection test failed: {e}")
+            # Continue anyway - connection might work later
+            
     except Exception as e:
         logger.error(f"Failed to create PostgreSQL engine: {e}")
         logger.info("Falling back to SQLite for development")
