@@ -25,7 +25,7 @@ Go to the **"Variables"** tab and add these variables:
 | `DATABASE_URL` | `postgresql://postgres:VPzlvfYNNmRSpxWukjeUIuGDsSFHwKOc@postgres.railway.internal:5432/railway` |
 | `SECRET_KEY` | `9Y3-ps7BXOl5RTUDwYvEDhNOZbNMenzqPnZdPcLRsbw` |
 | `ENVIRONMENT` | `production` |
-| `CORS_ORIGINS` | `https://myassemblage.art,https://www.myassemblage.art` |
+| `CORS_ORIGINS` | `https://myassemblage.art,https://www.myassemblage.art,https://art-app-frontend.vercel.app,https://*.vercel.app` |
 
 ### 3. ⚠️ **IMPORTANT: Format Correctly**
 - **Variable Name:** `DATABASE_URL` (just the name, no equals sign)

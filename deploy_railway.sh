@@ -36,7 +36,7 @@ echo ""
 echo "DATABASE_URL=postgresql://postgres:VPzlvfYNNmRSpxWukjeUIuGDsSFHwKOc@postgres.railway.internal:5432/railway"
 echo "SECRET_KEY=9Y3-ps7BXOl5RTUDwYvEDhNOZbNMenzqPnZdPcLRsbw"
 echo "ENVIRONMENT=production"
-echo "CORS_ORIGINS=https://myassemblage.art,https://www.myassemblage.art"
+echo "CORS_ORIGINS=https://myassemblage.art,https://www.myassemblage.art,https://art-app-frontend.vercel.app,https://*.vercel.app"
 echo ""
 
 echo "📝 Steps to Deploy:"

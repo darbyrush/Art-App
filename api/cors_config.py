@@ -28,6 +28,8 @@ def get_cors_middleware():
         "https://myassemblage.art",
         "https://www.myassemblage.art", 
         "https://api.myassemblage.art",
+        "https://art-app-frontend.vercel.app",  # Vercel frontend
+        "https://*.vercel.app",  # Any Vercel subdomain
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:8000"
