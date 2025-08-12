@@ -20,43 +20,55 @@ After fixing the import paths, a second issue emerged:
 - If the import failed, the function call would fail with an error
 - This caused the application to crash during startup
 
+## Build Issue: Complex Multi-stage Dockerfile
+The original `Dockerfile.backend` was a complex multi-stage build that was failing during the build process:
+- Issues with copying Python packages between stages
+- Complex dependency management that could fail silently
+- More points of failure during the build process
+
 ## Fixes Applied
 
-### 1. Updated Dockerfile.backend
-- **Before**: `CMD exec sh -c "cd /app/api && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"`
-- **After**: `CMD exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1`
+### 1. Switched to Simple Dockerfile
+- **Before**: Complex multi-stage `Dockerfile.backend` with potential build issues
+- **After**: Simple, reliable `Dockerfile.backend.simple` that's easier to debug and maintain
 
-This ensures that uvicorn runs from the `/app` directory with the correct module path.
+### 2. Updated Dockerfile.backend.simple
+- **Before**: Basic Python setup without proper Railway configuration
+- **After**: Full Railway configuration with proper port handling, health checks, and Python path setup
 
-### 2. Fixed Python Path Configuration
+### 3. Fixed Python Path Configuration
 - **Added**: `ENV PYTHONPATH=/app:/app/api`
 - This ensures that both the root directory and api directory are in the Python path
 - Allows imports to work correctly from both locations
 
-### 3. Updated Import Handling in main.py
+### 4. Updated Import Handling in main.py
 - Added robust import fallbacks that try production paths first, then development paths
 - Production paths: `from api.database.models import ...`
 - Development paths: `from database.models import ...`
 
-### 4. Fixed CORS Middleware Issue
+### 5. Fixed CORS Middleware Issue
 - **Before**: Direct call to `get_cors_middleware()` that could fail
 - **After**: Robust CORS configuration with multiple fallbacks:
   1. Try external CORS config from `api.cors_config`
   2. Try local CORS config from `cors_config`
   3. Fallback to basic CORS configuration if both fail
 
-### 5. Fixed Port Configuration
+### 6. Fixed Port Configuration
 - Ensured the application properly reads Railway's `PORT` environment variable
 - Updated health check to use the correct port
 
 ## Current Configuration
 
-### Dockerfile.backend
+### Dockerfile.backend.simple
 ```dockerfile
-# Key changes:
+# Key features:
+FROM python:3.12-slim
 WORKDIR /app
 ENV PYTHONPATH=/app:/app/api
 ENV PYTHONUNBUFFERED=1
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 CMD exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1
 ```
 
@@ -108,7 +120,7 @@ except ImportError:
 {
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "docker/Dockerfile.backend"
+    "dockerfilePath": "docker/Dockerfile.backend.simple"
   },
   "deploy": {
     "healthcheckPath": "/health",
@@ -119,6 +131,14 @@ except ImportError:
   }
 }
 ```
+
+## Why Dockerfile.backend.simple is Better
+
+1. **Simpler Build Process**: Single-stage build reduces points of failure
+2. **Easier Debugging**: Simpler structure makes it easier to identify issues
+3. **More Reliable**: Fewer complex operations that could fail during build
+4. **Faster Builds**: No multi-stage copying or complex dependency management
+5. **Better Maintainability**: Easier to understand and modify
 
 ## Verification
 Run the verification script to ensure everything is configured correctly:
@@ -139,6 +159,7 @@ Run the verification script to ensure everything is configured correctly:
 
 ## Expected Result
 After deployment, the backend should:
+- ✅ Build successfully without Docker build errors
 - ✅ Start successfully without import errors
 - ✅ Start successfully without CORS middleware errors
 - ✅ Listen on the correct port (Railway's PORT or 8000)
@@ -151,3 +172,4 @@ After deployment, the backend should:
 3. Test health endpoint: `curl https://your-app.railway.app/health`
 4. Check if the app is listening on the correct port
 5. Use debug scripts to test imports in container environment
+6. Verify the build process completes successfully

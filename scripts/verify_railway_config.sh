@@ -11,13 +11,13 @@ fi
 
 echo "✅ Found railway.json"
 
-# Check Dockerfile.backend exists
-if [ ! -f "docker/Dockerfile.backend" ]; then
-    echo "❌ Error: docker/Dockerfile.backend not found"
+# Check Dockerfile.backend.simple exists
+if [ ! -f "docker/Dockerfile.backend.simple" ]; then
+    echo "❌ Error: docker/Dockerfile.backend.simple not found"
     exit 1
 fi
 
-echo "✅ Found docker/Dockerfile.backend"
+echo "✅ Found docker/Dockerfile.backend.simple"
 
 # Check main.py exists
 if [ ! -f "api/main.py" ]; then
@@ -35,50 +35,57 @@ fi
 
 echo "✅ Found backend/requirements.txt"
 
-# Verify Dockerfile.backend content
+# Verify Dockerfile.backend.simple content
 echo ""
-echo "🔍 Checking Dockerfile.backend configuration..."
+echo "🔍 Checking Dockerfile.backend.simple configuration..."
 
 # Check if it exposes the right port
-if grep -q "EXPOSE 8000" docker/Dockerfile.backend; then
+if grep -q "EXPOSE 8000" docker/Dockerfile.backend.simple; then
     echo "✅ Dockerfile exposes port 8000"
 else
     echo "❌ Dockerfile does not expose port 8000"
 fi
 
 # Check if it uses PORT environment variable
-if grep -q "\${PORT:-8000}" docker/Dockerfile.backend; then
+if grep -q "\${PORT:-8000}" docker/Dockerfile.backend.simple; then
     echo "✅ Dockerfile uses PORT environment variable"
 else
     echo "❌ Dockerfile does not use PORT environment variable"
 fi
 
 # Check health check endpoint
-if grep -q "/health" docker/Dockerfile.backend; then
+if grep -q "/health" docker/Dockerfile.backend.simple; then
     echo "✅ Health check points to /health endpoint"
 else
     echo "❌ Health check does not point to /health endpoint"
 fi
 
 # Check if it uses uvicorn
-if grep -q "uvicorn" docker/Dockerfile.backend; then
+if grep -q "uvicorn" docker/Dockerfile.backend.simple; then
     echo "✅ Uses uvicorn for running the app"
 else
     echo "❌ Does not use uvicorn"
 fi
 
 # Check if it runs api.main:app
-if grep -q "api.main:app" docker/Dockerfile.backend; then
+if grep -q "api.main:app" docker/Dockerfile.backend.simple; then
     echo "✅ Runs api.main:app (correct for root directory)"
 else
     echo "❌ Does not run api.main:app"
 fi
 
 # Check PYTHONPATH setting
-if grep -q "PYTHONPATH=/app:/app/api" docker/Dockerfile.backend; then
+if grep -q "PYTHONPATH=/app:/app/api" docker/Dockerfile.backend.simple; then
     echo "✅ PYTHONPATH includes both /app and /app/api"
 else
     echo "❌ PYTHONPATH not set correctly"
+fi
+
+# Check if it installs necessary system dependencies
+if grep -q "libpq-dev" docker/Dockerfile.backend.simple; then
+    echo "✅ Installs PostgreSQL development libraries"
+else
+    echo "❌ Missing PostgreSQL development libraries"
 fi
 
 echo ""
@@ -122,10 +129,10 @@ echo ""
 echo "🔍 Checking Railway configuration..."
 
 # Check railway.json
-if grep -q "Dockerfile.backend" railway.json; then
+if grep -q "Dockerfile.backend.simple" railway.json; then
     echo "✅ railway.json points to correct Dockerfile"
 else
-    echo "❌ railway.json does not point to Dockerfile.backend"
+    echo "❌ railway.json does not point to Dockerfile.backend.simple"
 fi
 
 if grep -q "/health" railway.json; then
@@ -136,7 +143,7 @@ fi
 
 echo ""
 echo "📋 Summary of Railway deployment requirements:"
-echo "1. ✅ Dockerfile.backend exists and is configured"
+echo "1. ✅ Dockerfile.backend.simple exists and is configured"
 echo "2. ✅ main.py has health endpoint and PORT handling"
 echo "3. ✅ railway.json points to correct files"
 echo "4. ✅ Health check endpoint is /health"
@@ -144,6 +151,7 @@ echo "5. ✅ Port configuration uses PORT environment variable"
 echo "6. ✅ Import paths work in both development and production"
 echo "7. ✅ PYTHONPATH includes both /app and /app/api"
 echo "8. ✅ Robust CORS middleware handling with fallbacks"
+echo "9. ✅ PostgreSQL development libraries installed"
 
 echo ""
 echo "🚀 To deploy to Railway:"
