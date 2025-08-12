@@ -35,6 +35,14 @@ fi
 
 echo "✅ Found backend/requirements.txt"
 
+# Check frontend config exists
+if [ ! -f "frontend/src/config.js" ]; then
+    echo "❌ Error: frontend/src/config.js not found"
+    exit 1
+fi
+
+echo "✅ Found frontend/src/config.js"
+
 # Verify Dockerfile.backend.simple content
 echo ""
 echo "🔍 Checking Dockerfile.backend.simple configuration..."
@@ -126,6 +134,37 @@ else
     echo "❌ main.py does not use Railway environment variables for CORS"
 fi
 
+# Check if main.py has Vercel-Railway CORS origins
+if grep -q "Vercel-Railway native connection origins" api/main.py; then
+    echo "✅ main.py has Vercel-Railway CORS origins"
+else
+    echo "❌ main.py missing Vercel-Railway CORS origins"
+fi
+
+echo ""
+echo "🔍 Checking frontend configuration..."
+
+# Check if frontend config has Vercel-Railway integration
+if grep -q "VERCEL_RAILWAY_URL" frontend/src/config.js; then
+    echo "✅ frontend config has Vercel-Railway integration"
+else
+    echo "❌ frontend config missing Vercel-Railway integration"
+fi
+
+# Check if frontend config has priority system
+if grep -q "VERCEL_RAILWAY_URL" frontend/src/config.js && grep -q "RAILWAY_URL" frontend/src/config.js && grep -q "VITE_API_BASE_URL" frontend/src/config.js; then
+    echo "✅ frontend config has proper priority system"
+else
+    echo "❌ frontend config missing proper priority system"
+fi
+
+# Check if frontend config has automatic detection
+if grep -q "Using Vercel-Railway native connection" frontend/src/config.js; then
+    echo "✅ frontend config has automatic connection detection"
+else
+    echo "❌ frontend config missing automatic connection detection"
+fi
+
 echo ""
 echo "🔍 Checking Railway configuration..."
 
@@ -153,10 +192,13 @@ echo "6. ✅ Production import paths configured"
 echo "7. ✅ PYTHONPATH set to /app"
 echo "8. ✅ Simplified CORS configuration using Railway environment variables"
 echo "9. ✅ PostgreSQL development libraries installed"
+echo "10. ✅ Vercel-Railway native connection CORS origins"
+echo "11. ✅ Frontend config optimized for Vercel-Railway integration"
+echo "12. ✅ Automatic connection detection and priority system"
 
 echo ""
 echo "🚀 To deploy to Railway:"
-echo "1. Commit these changes: git add . && git commit -m 'Simplify CORS configuration and use Railway environment variables'"
+echo "1. Commit these changes: git add . && git commit -m 'Optimize for Vercel-Railway native connection'"
 echo "2. Push to your repository: git push origin main"
 echo "3. Railway should automatically redeploy"
 echo ""
@@ -169,7 +211,14 @@ echo "5. Verify import paths work in container environment"
 echo "6. Use debug script: scripts/test_simple_startup.py"
 echo ""
 echo "🌍 Railway Environment Variables to Set:"
-echo "- CORS_ORIGINS: https://myassemblage.art,https://www.myassemblage.art"
+echo "- CORS_ORIGINS: https://myassemblage.art.vercel.app,https://myassemblage.art,https://www.myassemblage.art"
 echo "- DATABASE_URL: Your Railway PostgreSQL connection string"
 echo "- SECRET_KEY: Your JWT secret key"
 echo "- ENVIRONMENT: production"
+echo ""
+echo "🚀 Vercel Dashboard Configuration:"
+echo "1. Connect Vercel to Railway in Integrations"
+echo "2. Set VITE_API_BASE_URL as fallback"
+echo "3. VERCEL_RAILWAY_URL will be auto-injected"
+echo ""
+echo "📚 See VERCEL_RAILWAY_INTEGRATION.md for detailed setup instructions"

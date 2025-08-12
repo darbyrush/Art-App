@@ -65,8 +65,15 @@ default_origins = [
     "http://localhost:5173"
 ]
 
-# Combine environment origins with defaults
-all_origins = cors_origins + default_origins
+# Vercel-Railway native connection origins
+vercel_origins = [
+    "https://myassemblage.art.vercel.app",  # Vercel domain
+    "https://*.vercel.app",                 # Any Vercel subdomain
+    "https://*.railway.app",                # Any Railway subdomain
+]
+
+# Combine all origins
+all_origins = cors_origins + default_origins + vercel_origins
 
 # Remove duplicates while preserving order
 seen = set()

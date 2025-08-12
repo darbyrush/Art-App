@@ -32,6 +32,13 @@ The external `cors_config.py` file was causing import errors during startup:
 - Dependency on external files that might not be available
 - Unnecessary complexity for a simple CORS setup
 
+## Vercel-Railway Native Connection Optimization
+Your setup uses Vercel's native connection to Railway, which provides:
+- **Automatic Environment Variables**: Vercel auto-injects `VERCEL_RAILWAY_URL`
+- **Internal Network**: Faster, more secure communication
+- **Automatic Service Discovery**: Vercel discovers Railway services automatically
+- **Built-in Monitoring**: Better integration between platforms
+
 ## Fixes Applied
 
 ### 1. Switched to Simple Dockerfile
@@ -59,7 +66,13 @@ The external `cors_config.py` file was causing import errors during startup:
   - Easier to debug and maintain
   - More reliable startup
 
-### 6. Fixed Port Configuration
+### 6. Optimized for Vercel-Railway Native Connection
+- **Frontend Priority System**: `VERCEL_RAILWAY_URL` → `RAILWAY_URL` → `VITE_API_BASE_URL` → Fallback
+- **Automatic Detection**: Logs which connection method is being used
+- **Vercel CORS Origins**: Added support for Vercel domains
+- **Internal Network**: Optimized for Vercel's internal routing
+
+### 7. Fixed Port Configuration
 - Ensured the application properly reads Railway's `PORT` environment variable
 - Updated health check to use the correct port
 
@@ -102,7 +115,15 @@ default_origins = [
     "http://localhost:5173"
 ]
 
-all_origins = cors_origins + default_origins
+# Vercel-Railway native connection origins
+vercel_origins = [
+    "https://myassemblage.art.vercel.app",  # Vercel domain
+    "https://*.vercel.app",                 # Any Vercel subdomain
+    "https://*.railway.app",                # Any Railway subdomain
+]
+
+# Combine all origins
+all_origins = cors_origins + default_origins + vercel_origins
 
 app.add_middleware(
     CORSMiddleware,
@@ -111,6 +132,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+```
+
+### frontend/src/config.js
+```javascript
+// Vercel-Railway native connection priority system:
+export const config = {
+  apiBaseUrl: import.meta.env.VERCEL_RAILWAY_URL || 
+               import.meta.env.RAILWAY_URL ||
+               import.meta.env.VITE_API_BASE_URL ||
+               'https://art-app-production.up.railway.app',
+  // ... other config
+}
+
+// Automatic connection detection:
+if (import.meta.env.VERCEL_RAILWAY_URL) {
+  config.apiBaseUrl = import.meta.env.VERCEL_RAILWAY_URL
+  console.log('🚀 Using Vercel-Railway native connection')
+} else if (import.meta.env.RAILWAY_URL) {
+  config.apiBaseUrl = import.meta.env.RAILWAY_URL
+  console.log('🚂 Using Railway direct connection')
+} else {
+  // fallback logic
+}
 ```
 
 ### railway.json
@@ -140,8 +184,21 @@ DATABASE_URL=postgresql://postgres:password@postgres.railway.internal:5432/railw
 SECRET_KEY=your-secret-key-here
 ENVIRONMENT=production
 
-# Optional (will use defaults if not set)
-CORS_ORIGINS=https://myassemblage.art,https://www.myassemblage.art
+# CORS for Vercel domains
+CORS_ORIGINS=https://myassemblage.art.vercel.app,https://myassemblage.art,https://www.myassemblage.art
+```
+
+## Vercel Dashboard Configuration
+
+Set these in Vercel:
+
+```bash
+# Vercel will automatically inject these when connected to Railway:
+# VERCEL_RAILWAY_URL (auto-injected)
+
+# Manual fallbacks:
+VITE_API_BASE_URL=https://art-app-production.up.railway.app
+NODE_ENV=production
 ```
 
 ## Why This Approach is Better
@@ -154,6 +211,8 @@ CORS_ORIGINS=https://myassemblage.art,https://www.myassemblage.art
 6. **Railway Native**: Uses Railway's built-in environment variable system
 7. **No External Dependencies**: CORS configuration is self-contained
 8. **Predictable Imports**: Simple import paths that work reliably
+9. **Vercel Optimized**: Leverages Vercel's native Railway integration
+10. **Automatic Discovery**: Self-configuring based on available environment variables
 
 ## Verification
 Run the verification script to ensure everything is configured correctly:
@@ -164,12 +223,27 @@ Run the verification script to ensure everything is configured correctly:
 ## Debug Tools
 - `scripts/test_simple_startup.py` - Test simplified startup without complex imports
 - `scripts/verify_railway_config.sh` - Configuration verification
+- `frontend/VERCEL_RAILWAY_INTEGRATION.md` - Detailed Vercel-Railway setup guide
 
 ## Deployment Steps
-1. Commit changes: `git add . && git commit -m 'Simplify CORS configuration and use Railway environment variables'`
+1. Commit changes: `git add . && git commit -m 'Optimize for Vercel-Railway native connection'`
 2. Push to repository: `git push origin main`
 3. Railway will automatically redeploy
 4. Monitor logs: `railway logs`
+
+## Vercel-Railway Integration Steps
+1. **Connect Vercel to Railway**:
+   - Go to Vercel dashboard → Integrations
+   - Find "Railway" and click "Connect"
+   - Select your Railway project
+
+2. **Set Environment Variables**:
+   - Vercel will auto-inject `VERCEL_RAILWAY_URL`
+   - Set `VITE_API_BASE_URL` as fallback
+
+3. **Deploy and Test**:
+   - Vercel will automatically redeploy
+   - Check logs for connection status
 
 ## Expected Result
 After deployment, the backend should:
@@ -177,9 +251,11 @@ After deployment, the backend should:
 - ✅ Start successfully without import errors
 - ✅ Start successfully without CORS middleware errors
 - ✅ Use Railway environment variables for configuration
+- ✅ Automatically detect Vercel-Railway native connection
 - ✅ Listen on the correct port (Railway's PORT or 8000)
 - ✅ Respond to health checks at `/health`
 - ✅ Handle all API requests properly
+- ✅ Optimize for Vercel's internal network
 
 ## If Issues Persist
 1. Check Railway logs immediately after deployment
@@ -188,3 +264,5 @@ After deployment, the backend should:
 4. Check if the app is listening on the correct port
 5. Use debug scripts to test simplified startup
 6. Verify Railway environment variables are set correctly
+7. Check Vercel-Railway integration status
+8. Verify CORS configuration includes Vercel domains

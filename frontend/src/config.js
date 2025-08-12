@@ -1,9 +1,12 @@
 // Configuration for the application
-// CRITICAL: Railway backend deployment - Force Vercel redeploy NOW
+// OPTIMIZED: Vercel-Railway Native Connection
 // Version: 2024-01-XX - Railway Backend Integration
 export const config = {
-  // API base URL - use Railway backend URL
-  apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'https://art-app-production.up.railway.app',
+  // API base URL - prioritize Vercel-Railway native connection
+  apiBaseUrl: import.meta.env.VERCEL_RAILWAY_URL || 
+               import.meta.env.RAILWAY_URL ||
+               import.meta.env.VITE_API_BASE_URL ||
+               'https://art-app-production.up.railway.app',
   
   // App settings
   appName: 'Art Explorer',
@@ -22,9 +25,20 @@ if (import.meta.env.PROD) {
   // Production settings
   config.features.imageOptimization = true
   config.features.virtualScrolling = true
-  // Force production API URL if not set
-  if (!import.meta.env.VITE_API_BASE_URL) {
+  
+  // Vercel-Railway native connection priority
+  if (import.meta.env.VERCEL_RAILWAY_URL) {
+    config.apiBaseUrl = import.meta.env.VERCEL_RAILWAY_URL
+    console.log('🚀 Using Vercel-Railway native connection')
+  } else if (import.meta.env.RAILWAY_URL) {
+    config.apiBaseUrl = import.meta.env.RAILWAY_URL
+    console.log('🚂 Using Railway direct connection')
+  } else if (import.meta.env.VITE_API_BASE_URL) {
+    config.apiBaseUrl = import.meta.env.VITE_API_BASE_URL
+    console.log('🔗 Using custom API base URL')
+  } else {
     config.apiBaseUrl = 'https://art-app-production.up.railway.app'
+    console.log('🌐 Using fallback Railway URL')
   }
 }
 
@@ -32,5 +46,7 @@ if (import.meta.env.PROD) {
 if (import.meta.env.DEV) {
   console.log('Environment:', import.meta.env.MODE)
   console.log('API Base URL:', config.apiBaseUrl)
+  console.log('VERCEL_RAILWAY_URL:', import.meta.env.VERCEL_RAILWAY_URL)
+  console.log('RAILWAY_URL:', import.meta.env.RAILWAY_URL)
   console.log('VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL)
 } 
