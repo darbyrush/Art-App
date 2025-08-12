@@ -1,20 +1,5 @@
 <template>
   <div class="min-h-screen bg-gray-50">
-    <!-- Header -->
-    <AppHeader>
-      <template #title>
-        <h1 class="text-lg sm:text-2xl font-serif font-bold text-gray-900">🖼️ Gallery</h1>
-      </template>
-      <template #actions>
-        <button 
-          @click="showBoardModal = true"
-          class="btn-primary text-sm px-3 py-2"
-        >
-          Add to Board
-        </button>
-      </template>
-    </AppHeader>
-
     <!-- Filters Section -->
     <div class="bg-white shadow-sm border-b">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -46,6 +31,12 @@
             </div>
           </div>
           <div class="flex items-center space-x-2">
+            <button 
+              @click="showBoardModal = true"
+              class="btn-primary text-sm px-3 py-2"
+            >
+              Add to Board
+            </button>
             <span class="text-sm text-gray-500">{{ filteredCount }} artworks</span>
             <button 
               v-if="hasActiveFilters"

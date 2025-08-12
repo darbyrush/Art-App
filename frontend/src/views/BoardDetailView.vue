@@ -1,38 +1,38 @@
 <template>
   <div class="min-h-screen bg-gray-50">
-    <!-- Header -->
-    <AppHeader>
-      <template #title>
-        <button 
-          @click="router.back()"
-          class="text-gray-600 hover:text-gray-900"
-        >
-          ← Back
-        </button>
-        <h1 class="text-lg sm:text-2xl font-serif font-bold text-gray-900">
-          {{ board?.name || 'Loading...' }}
-        </h1>
-      </template>
-      <template #actions>
-        <button 
-          @click="showEditModal = true"
-          class="btn-secondary text-sm px-3 py-2"
-        >
-          Edit Board
-        </button>
-        <button 
-          @click="router.push('/boards')"
-          class="btn-primary text-sm px-3 py-2"
-        >
-          All Boards
-        </button>
-      </template>
-    </AppHeader>
-
     <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <!-- Board Header -->
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center space-x-4">
+          <button 
+            @click="router.back()"
+            class="text-gray-600 hover:text-gray-900 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            ← Back
+          </button>
+          <h1 class="text-2xl sm:text-3xl font-serif font-bold text-gray-900">
+            {{ board?.name || 'Loading...' }}
+          </h1>
+        </div>
+        <div class="flex items-center space-x-3">
+          <button 
+            @click="showEditModal = true"
+            class="btn-secondary text-sm px-3 py-2"
+          >
+            Edit Board
+          </button>
+          <button 
+            @click="router.push('/boards')"
+            class="btn-primary text-sm px-3 py-2"
+          >
+            All Boards
+          </button>
+        </div>
+      </div>
+
       <!-- Loading State -->
-      <div v-if="loading" class="text-center py-12">
+      <div v-if="loading && !board" class="text-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
         <p class="mt-4 text-gray-600">Loading board...</p>
       </div>
@@ -175,7 +175,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useBoardStore } from '@/stores/board'
 import { getOptimizedImageUrl } from '@/utils/imageUtils'
-import AppHeader from '@/components/AppHeader.vue'
 
 const route = useRoute()
 const router = useRouter()

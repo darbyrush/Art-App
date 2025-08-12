@@ -4,14 +4,20 @@
       <div class="flex justify-between items-center py-3 sm:py-4">
         <!-- Left side: Logo and title -->
         <div class="flex items-center space-x-3">
-          <router-link to="/" class="text-lg sm:text-2xl font-serif font-bold text-gray-900">
+          <!-- Logo/Home Link - Only link when authenticated -->
+          <div v-if="user" class="text-lg sm:text-2xl font-serif font-bold text-gray-900">
+            <router-link to="/" class="hover:text-primary-600 transition-colors">
+              🎨 Art Explorer
+            </router-link>
+          </div>
+          <div v-else class="text-lg sm:text-2xl font-serif font-bold text-gray-900">
             🎨 Art Explorer
-          </router-link>
+          </div>
           <slot name="title"></slot>
         </div>
 
         <!-- Center: Navigation -->
-        <nav class="hidden md:flex items-center space-x-4">
+        <nav v-if="user" class="hidden md:flex items-center space-x-4">
           <router-link 
             to="/" 
             class="text-sm text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md transition-colors"
@@ -40,8 +46,8 @@
           <!-- Additional actions slot -->
           <slot name="actions"></slot>
           
-          <!-- User Profile Section -->
-          <div class="flex items-center space-x-3">
+          <!-- User Profile Section - Only show when authenticated -->
+          <div v-if="user" class="flex items-center space-x-3">
             <!-- Profile Picture -->
             <div class="relative group">
               <div class="w-8 h-8 rounded-full overflow-hidden bg-gray-200 border-2 border-gray-300 cursor-pointer">
@@ -81,6 +87,22 @@
             <span class="hidden sm:block text-sm font-medium text-gray-700">
               {{ user?.username }}
             </span>
+          </div>
+          
+          <!-- Auth Buttons - Only show when not authenticated -->
+          <div v-else class="flex items-center space-x-3">
+            <router-link 
+              to="/login" 
+              class="text-sm text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md transition-colors"
+            >
+              Login
+            </router-link>
+            <router-link 
+              to="/register" 
+              class="btn-primary text-sm px-3 py-2"
+            >
+              Sign Up
+            </router-link>
           </div>
         </div>
       </div>

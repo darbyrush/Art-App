@@ -1,23 +1,17 @@
 <template>
   <div class="min-h-screen bg-gray-50">
-    <!-- Header -->
-    <AppHeader>
-      <template #title>
-        <h1 class="text-lg sm:text-2xl font-serif font-bold text-gray-900">🎨 Exhibit</h1>
-        <!-- Filter Toggle Button -->
-        <button 
-          @click="showFilters = !showFilters"
-          class="flex items-center space-x-1 text-gray-500 hover:text-gray-700 transition-colors p-1 rounded-lg"
-          :class="{ 'text-blue-600': showFilters || hasActiveFilters }"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707v4.586l-4-2v-2.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-          </svg>
-          <span class="text-xs hidden sm:inline">Filter</span>
-          <span v-if="hasActiveFilters" class="w-2 h-2 bg-blue-500 rounded-full"></span>
-        </button>
-      </template>
-    </AppHeader>
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <!-- Welcome Section -->
+      <div class="text-center mb-12">
+        <h1 class="text-4xl sm:text-6xl font-serif font-bold text-gray-900 mb-6">
+          🎨 Welcome to Art Explorer
+        </h1>
+        <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+          Discover amazing artworks from world-renowned museums and galleries. 
+          Start your art journey with a random masterpiece!
+        </p>
+      </div>
       
       <!-- Filter Panel -->
       <transition name="slide-down">
@@ -83,8 +77,6 @@
         </div>
       </transition>
 
-    <!-- Main Content -->
-    <main class="max-w-2xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
       <!-- Loading State -->
       <div v-if="loading && artworks.length === 0" class="text-center py-8 sm:py-12">
         <div class="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-2 border-primary-600 mx-auto"></div>
@@ -238,7 +230,9 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useArtworkStore } from '@/stores/artwork'
 import { getOptimizedImageUrl, getFallbackImageUrl } from '@/utils/imageUtils'
-import AppHeader from '@/components/AppHeader.vue'
+import VirtualScroller from '@/components/VirtualScroller.vue'
+import OptimizedImage from '@/components/OptimizedImage.vue'
+import { config } from '@/config'
 
 const router = useRouter()
 const authStore = useAuthStore()

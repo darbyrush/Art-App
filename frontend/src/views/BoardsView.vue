@@ -1,22 +1,18 @@
 <template>
   <div class="min-h-screen bg-gray-50">
-    <!-- Header -->
-    <AppHeader>
-      <template #title>
-        <h1 class="text-lg sm:text-2xl font-serif font-bold text-gray-900">📋 Boards</h1>
-      </template>
-      <template #actions>
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <!-- Header Actions -->
+      <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl sm:text-3xl font-serif font-bold text-gray-900">Your Boards</h1>
         <button 
           @click="showCreateModal = true"
           class="btn-primary text-sm sm:text-base px-3 py-2"
         >
           + New Board
         </button>
-      </template>
-    </AppHeader>
+      </div>
 
-    <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
       <!-- Loading State -->
       <div v-if="loading && boards.length === 0" class="text-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
@@ -198,7 +194,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useBoardStore } from '@/stores/board'
-import AppHeader from '@/components/AppHeader.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()

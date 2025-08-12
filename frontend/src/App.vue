@@ -1,6 +1,15 @@
 <template>
   <div id="app">
-    <AppHeader />
+    <AppHeader>
+      <!-- Dynamic title based on route -->
+      <template #title>
+        <h1 v-if="$route.name === 'Gallery'" class="text-lg sm:text-2xl font-serif font-bold text-gray-900">🖼️ Gallery</h1>
+        <h1 v-else-if="$route.name === 'Boards'" class="text-lg sm:text-2xl font-serif font-bold text-gray-900">📋 Boards</h1>
+        <h1 v-else-if="$route.name === 'BoardDetail'" class="text-lg sm:text-2xl font-serif font-bold text-gray-900">📋 Board</h1>
+        <h1 v-else-if="$route.name === 'Profile'" class="text-lg sm:text-2xl font-serif font-bold text-gray-900">👤 Profile</h1>
+        <h1 v-else-if="$route.name === 'Exhibit'" class="text-lg sm:text-2xl font-serif font-bold text-gray-900">🎨 Exhibit</h1>
+      </template>
+    </AppHeader>
     <ErrorBoundary>
       <main class="min-h-screen bg-gray-50">
         <router-view />
