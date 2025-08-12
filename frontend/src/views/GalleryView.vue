@@ -163,7 +163,7 @@
       </div>
 
       <!-- Empty State -->
-      <div v-else-if="artworks.length === 0 && !loading" class="text-center py-12">
+              <div v-else-if="artworks && artworks.length === 0 && !loading" class="text-center py-12">
         <div class="text-6xl mb-4">{{ hasActiveFilters ? '🔍' : '🎨' }}</div>
         <h2 class="text-2xl font-serif font-bold mb-2">
           {{ hasActiveFilters ? 'No Matching Artworks' : 'No Liked Artworks' }}
@@ -189,11 +189,11 @@
       </div>
 
       <!-- Artworks Grid -->
-      <div v-else class="artworks-container">
+      <div v-else-if="artworks" class="artworks-container">
         <!-- Use Virtual Scroller for large lists -->
         <VirtualScroller
-          v-if="artworks.length > 50"
-          :items="artworks"
+          v-if="artworks && artworks.length > 50"
+          :items="artworks || []"
           :item-height="320"
           :container-height="600"
           :overscan="10"
@@ -244,7 +244,7 @@
         <!-- Regular grid for smaller lists -->
         <div v-else class="artworks-grid">
           <div 
-            v-for="artwork in artworks"
+            v-for="artwork in (artworks || [])"
             :key="artwork.id"
             class="artwork-card"
           >
@@ -523,7 +523,7 @@ const filters = ref({
 })
 
 // Computed
-const artworks = computed(() => artworkStore.likedArtworks)
+const artworks = computed(() => artworkStore.artworks || [])
 const boards = computed(() => {
   // Defensive check for boardStore.boards
   if (!boardStore.boards || !Array.isArray(boardStore.boards)) {
