@@ -75,8 +75,8 @@ else
 fi
 
 # Check PYTHONPATH setting
-if grep -q "PYTHONPATH=/app:/app/api" docker/Dockerfile.backend.simple; then
-    echo "✅ PYTHONPATH includes both /app and /app/api"
+if grep -q "PYTHONPATH=/app" docker/Dockerfile.backend.simple; then
+    echo "✅ PYTHONPATH set to /app"
 else
     echo "❌ PYTHONPATH not set correctly"
 fi
@@ -105,24 +105,25 @@ else
     echo "❌ main.py does not handle PORT environment variable"
 fi
 
-# Check if main.py has proper import fallbacks
+# Check if main.py has production import paths
 if grep -q "from api.database.models import" api/main.py; then
     echo "✅ main.py has production import paths"
 else
     echo "❌ main.py missing production import paths"
 fi
 
-if grep -q "from database.models import" api/main.py; then
-    echo "✅ main.py has development import paths"
+# Check if main.py has simplified CORS handling
+if grep -q "Add CORS middleware using Railway environment variables directly" api/main.py; then
+    echo "✅ main.py has simplified CORS configuration"
 else
-    echo "❌ main.py missing development import paths"
+    echo "❌ main.py missing simplified CORS configuration"
 fi
 
-# Check if main.py has robust CORS handling
-if grep -q "Add CORS middleware with robust configuration" api/main.py; then
-    echo "✅ main.py has robust CORS middleware handling"
+# Check if main.py uses environment variables for CORS
+if grep -q "os.getenv(\"CORS_ORIGINS\"" api/main.py; then
+    echo "✅ main.py uses Railway environment variables for CORS"
 else
-    echo "❌ main.py missing robust CORS middleware handling"
+    echo "❌ main.py does not use Railway environment variables for CORS"
 fi
 
 echo ""
@@ -148,14 +149,14 @@ echo "2. ✅ main.py has health endpoint and PORT handling"
 echo "3. ✅ railway.json points to correct files"
 echo "4. ✅ Health check endpoint is /health"
 echo "5. ✅ Port configuration uses PORT environment variable"
-echo "6. ✅ Import paths work in both development and production"
-echo "7. ✅ PYTHONPATH includes both /app and /app/api"
-echo "8. ✅ Robust CORS middleware handling with fallbacks"
+echo "6. ✅ Production import paths configured"
+echo "7. ✅ PYTHONPATH set to /app"
+echo "8. ✅ Simplified CORS configuration using Railway environment variables"
 echo "9. ✅ PostgreSQL development libraries installed"
 
 echo ""
 echo "🚀 To deploy to Railway:"
-echo "1. Commit these changes: git add . && git commit -m 'Fix Railway deployment configuration'"
+echo "1. Commit these changes: git add . && git commit -m 'Simplify CORS configuration and use Railway environment variables'"
 echo "2. Push to your repository: git push origin main"
 echo "3. Railway should automatically redeploy"
 echo ""
@@ -165,4 +166,10 @@ echo "2. Check Railway status: railway status"
 echo "3. Verify environment variables in Railway dashboard"
 echo "4. Check if the /health endpoint responds: curl https://your-app.railway.app/health"
 echo "5. Verify import paths work in container environment"
-echo "6. Use debug script: scripts/debug_container.py"
+echo "6. Use debug script: scripts/test_simple_startup.py"
+echo ""
+echo "🌍 Railway Environment Variables to Set:"
+echo "- CORS_ORIGINS: https://myassemblage.art,https://www.myassemblage.art"
+echo "- DATABASE_URL: Your Railway PostgreSQL connection string"
+echo "- SECRET_KEY: Your JWT secret key"
+echo "- ENVIRONMENT: production"

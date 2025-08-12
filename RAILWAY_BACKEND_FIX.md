@@ -26,6 +26,12 @@ The original `Dockerfile.backend` was a complex multi-stage build that was faili
 - Complex dependency management that could fail silently
 - More points of failure during the build process
 
+## CORS Configuration Issue
+The external `cors_config.py` file was causing import errors during startup:
+- Complex import fallbacks that could fail
+- Dependency on external files that might not be available
+- Unnecessary complexity for a simple CORS setup
+
 ## Fixes Applied
 
 ### 1. Switched to Simple Dockerfile
@@ -37,21 +43,21 @@ The original `Dockerfile.backend` was a complex multi-stage build that was faili
 - **After**: Full Railway configuration with proper port handling, health checks, and Python path setup
 
 ### 3. Fixed Python Path Configuration
-- **Added**: `ENV PYTHONPATH=/app:/app/api`
-- This ensures that both the root directory and api directory are in the Python path
-- Allows imports to work correctly from both locations
+- **Before**: `ENV PYTHONPATH=/app:/app/api` (complex)
+- **After**: `ENV PYTHONPATH=/app` (simple and reliable)
 
 ### 4. Updated Import Handling in main.py
-- Added robust import fallbacks that try production paths first, then development paths
-- Production paths: `from api.database.models import ...`
-- Development paths: `from database.models import ...`
+- **Before**: Complex fallback imports with multiple try-catch blocks
+- **After**: Simple production imports that work reliably in the container
 
-### 5. Fixed CORS Middleware Issue
-- **Before**: Direct call to `get_cors_middleware()` that could fail
-- **After**: Robust CORS configuration with multiple fallbacks:
-  1. Try external CORS config from `api.cors_config`
-  2. Try local CORS config from `cors_config`
-  3. Fallback to basic CORS configuration if both fail
+### 5. Simplified CORS Configuration
+- **Before**: Complex import fallbacks and external file dependencies
+- **After**: Direct CORS configuration using Railway environment variables
+- **Benefits**: 
+  - No external file dependencies
+  - Uses Railway's built-in environment variable system
+  - Easier to debug and maintain
+  - More reliable startup
 
 ### 6. Fixed Port Configuration
 - Ensured the application properly reads Railway's `PORT` environment variable
@@ -64,7 +70,7 @@ The original `Dockerfile.backend` was a complex multi-stage build that was faili
 # Key features:
 FROM python:3.12-slim
 WORKDIR /app
-ENV PYTHONPATH=/app:/app/api
+ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -74,45 +80,37 @@ CMD exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1
 
 ### main.py
 ```python
-# Import handling:
-try:
-    # Production imports (when running in container)
-    from api.database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
-    # ... other imports
-except ImportError:
-    try:
-        # Development imports (when running locally)
-        from database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
-        # ... other imports
-    except ImportError as e:
-        logging.error(f"❌ All import attempts failed: {e}")
-        raise
+# Simplified import handling:
+from api.database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
+from api.database.config import get_db, init_db, test_connection
+from api.schemas import (
+    UserCreate, UserResponse, UserUpdate, UserLikeCreate, UserRatingCreate, 
+    UserNoteCreate, BoardCreate, BoardResponse, BoardUpdate, BoardArtworkCreate,
+    ArtworkResponse, Token
+)
+from api.services import UserService
+from api.auth import get_current_user, create_access_token, get_password_hash
 
-# CORS middleware with robust fallbacks:
-try:
-    from api.cors_config import get_cors_middleware
-    app.add_middleware(get_cors_middleware())
-    logger.info("✅ Using external CORS configuration")
-except ImportError:
-    try:
-        from cors_config import get_cors_middleware
-        app.add_middleware(get_cors_middleware())
-        logger.info("✅ Using local CORS configuration")
-    except ImportError:
-        # Final fallback: use basic CORS configuration
-        logger.warning("⚠️ External CORS config not available, using basic CORS")
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=[
-                "https://myassemblage.art",
-                "https://www.myassemblage.art",
-                "http://localhost:3000",
-                "http://localhost:5173"
-            ],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+# Simplified CORS configuration using Railway environment variables:
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+
+default_origins = [
+    "https://myassemblage.art",
+    "https://www.myassemblage.art",
+    "http://localhost:3000",
+    "http://localhost:5173"
+]
+
+all_origins = cors_origins + default_origins
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=all_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 ```
 
 ### railway.json
@@ -132,13 +130,30 @@ except ImportError:
 }
 ```
 
-## Why Dockerfile.backend.simple is Better
+## Railway Environment Variables
+
+Set these in your Railway dashboard:
+
+```bash
+# Required
+DATABASE_URL=postgresql://postgres:password@postgres.railway.internal:5432/railway
+SECRET_KEY=your-secret-key-here
+ENVIRONMENT=production
+
+# Optional (will use defaults if not set)
+CORS_ORIGINS=https://myassemblage.art,https://www.myassemblage.art
+```
+
+## Why This Approach is Better
 
 1. **Simpler Build Process**: Single-stage build reduces points of failure
 2. **Easier Debugging**: Simpler structure makes it easier to identify issues
 3. **More Reliable**: Fewer complex operations that could fail during build
 4. **Faster Builds**: No multi-stage copying or complex dependency management
 5. **Better Maintainability**: Easier to understand and modify
+6. **Railway Native**: Uses Railway's built-in environment variable system
+7. **No External Dependencies**: CORS configuration is self-contained
+8. **Predictable Imports**: Simple import paths that work reliably
 
 ## Verification
 Run the verification script to ensure everything is configured correctly:
@@ -147,12 +162,11 @@ Run the verification script to ensure everything is configured correctly:
 ```
 
 ## Debug Tools
-- `scripts/debug_container.py` - Test imports in container environment
-- `scripts/test_container_imports.py` - Comprehensive import testing
+- `scripts/test_simple_startup.py` - Test simplified startup without complex imports
 - `scripts/verify_railway_config.sh` - Configuration verification
 
 ## Deployment Steps
-1. Commit changes: `git add . && git commit -m 'Fix Railway deployment configuration'`
+1. Commit changes: `git add . && git commit -m 'Simplify CORS configuration and use Railway environment variables'`
 2. Push to repository: `git push origin main`
 3. Railway will automatically redeploy
 4. Monitor logs: `railway logs`
@@ -162,6 +176,7 @@ After deployment, the backend should:
 - ✅ Build successfully without Docker build errors
 - ✅ Start successfully without import errors
 - ✅ Start successfully without CORS middleware errors
+- ✅ Use Railway environment variables for configuration
 - ✅ Listen on the correct port (Railway's PORT or 8000)
 - ✅ Respond to health checks at `/health`
 - ✅ Handle all API requests properly
@@ -171,5 +186,5 @@ After deployment, the backend should:
 2. Verify environment variables in Railway dashboard
 3. Test health endpoint: `curl https://your-app.railway.app/health`
 4. Check if the app is listening on the correct port
-5. Use debug scripts to test imports in container environment
-6. Verify the build process completes successfully
+5. Use debug scripts to test simplified startup
+6. Verify Railway environment variables are set correctly

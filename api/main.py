@@ -52,33 +52,39 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware with robust configuration
-try:
-    # Try to use the external CORS config if available
-    from api.cors_config import get_cors_middleware
-    app.add_middleware(get_cors_middleware())
-    logger.info("✅ Using external CORS configuration")
-except ImportError:
-    try:
-        # Fallback to local CORS config
-        from cors_config import get_cors_middleware
-        app.add_middleware(get_cors_middleware())
-        logger.info("✅ Using local CORS configuration")
-    except ImportError:
-        # Final fallback: use basic CORS configuration
-        logger.warning("⚠️ External CORS config not available, using basic CORS")
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=[
-                "https://myassemblage.art",
-                "https://www.myassemblage.art",
-                "http://localhost:3000",
-                "http://localhost:5173"
-            ],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+# Add CORS middleware using Railway environment variables directly
+# Get CORS origins from Railway environment variables
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+
+# Default origins for development and production
+default_origins = [
+    "https://myassemblage.art",
+    "https://www.myassemblage.art",
+    "http://localhost:3000",
+    "http://localhost:5173"
+]
+
+# Combine environment origins with defaults
+all_origins = cors_origins + default_origins
+
+# Remove duplicates while preserving order
+seen = set()
+unique_origins = []
+for origin in all_origins:
+    if origin not in seen:
+        seen.add(origin)
+        unique_origins.append(origin)
+
+logger.info(f"✅ CORS origins configured: {unique_origins}")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=unique_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Simple startup event
 @app.on_event("startup")
