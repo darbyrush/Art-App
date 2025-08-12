@@ -26,12 +26,12 @@ RUN useradd --create-home --shell /bin/bash appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
-# Set Python path to include the current directory and ensure imports work correctly
-ENV PYTHONPATH=/app
+# Set Python path to include both /app and /app/api for proper imports
+ENV PYTHONPATH=/app:/app/api
 ENV PYTHONUNBUFFERED=1
 
 # Expose port (Railway will set the actual port via $PORT)
-EXPOSE 8000
+EXPOSE ${PORT:-8000}
 
 # Health check (use the PORT environment variable that Railway sets)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

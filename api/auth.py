@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from database.config import get_db
 from database.models import User
-from api.schemas import TokenData
+from schemas import TokenData
 
 # Security configuration
 SECRET_KEY = os.getenv("SECRET_KEY")

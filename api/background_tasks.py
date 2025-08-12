@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from database.config import SessionLocal
 from database.models import Artwork
-from api.artwork_populator import ArtworkPopulator
+from artwork_populator import ArtworkPopulator
 
 logger = logging.getLogger(__name__)
 

@@ -83,8 +83,8 @@ else
 fi
 
 # Check PYTHONPATH setting
-if grep -q "PYTHONPATH=/app" docker/Dockerfile.backend.simple; then
-    echo "✅ PYTHONPATH set to /app"
+if grep -q "PYTHONPATH=/app:/app/api" docker/Dockerfile.backend.simple; then
+    echo "✅ PYTHONPATH includes both /app and /app/api"
 else
     echo "❌ PYTHONPATH not set correctly"
 fi
@@ -118,6 +118,20 @@ if grep -q "from api.database.models import" api/main.py; then
     echo "✅ main.py has production import paths"
 else
     echo "❌ main.py missing production import paths"
+fi
+
+# Check if main.py has simplified imports (no fallback logic)
+if grep -q "Import schemas and models - use production paths for container" api/main.py; then
+    echo "✅ main.py has simplified import configuration"
+else
+    echo "❌ main.py missing simplified import configuration"
+fi
+
+# Check if main.py has no fallback import logic
+if ! grep -q "except ImportError:" api/main.py; then
+    echo "✅ main.py has no fallback import logic (clean imports)"
+else
+    echo "❌ main.py still has fallback import logic"
 fi
 
 # Check if main.py has simplified CORS handling
@@ -189,12 +203,13 @@ echo "3. ✅ railway.json points to correct files"
 echo "4. ✅ Health check endpoint is /health"
 echo "5. ✅ Port configuration uses PORT environment variable"
 echo "6. ✅ Production import paths configured"
-echo "7. ✅ PYTHONPATH set to /app"
+echo "7. ✅ PYTHONPATH includes both /app and /app/api"
 echo "8. ✅ Simplified CORS configuration using Railway environment variables"
 echo "9. ✅ PostgreSQL development libraries installed"
 echo "10. ✅ Vercel-Railway native connection CORS origins"
 echo "11. ✅ Frontend config optimized for Vercel-Railway integration"
 echo "12. ✅ Automatic connection detection and priority system"
+echo "13. ✅ Simplified import configuration (no fallbacks)"
 
 echo ""
 echo "🚀 To deploy to Railway:"

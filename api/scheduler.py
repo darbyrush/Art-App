@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from api.background_tasks import run_background_tasks
+from background_tasks import run_background_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class TaskScheduler:
     async def _cleanup_job(self):
         """Daily cleanup job"""
         try:
-            from api.background_tasks import background_manager
+            from background_tasks import background_manager
             deleted_count = background_manager.cleanup_old_artworks()
             logger.info(f"Daily cleanup completed: {deleted_count} artworks deleted")
         except Exception as e:

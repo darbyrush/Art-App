@@ -11,35 +11,18 @@ import time
 import logging
 from typing import List, Optional
 
-# Import schemas and models - use the correct import paths for production
-try:
-    # Try production imports first (when running in Docker container)
-    from api.database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
-    from api.database.config import get_db, init_db, test_connection
-    from api.schemas import (
-        UserCreate, UserResponse, UserUpdate, UserLikeCreate, UserRatingCreate, 
-        UserNoteCreate, BoardCreate, BoardResponse, BoardUpdate, BoardArtworkCreate,
-        ArtworkResponse, Token
-    )
-    from api.services import UserService
-    from api.auth import get_current_user, create_access_token, get_password_hash
-    logging.info("✅ Using production import paths")
-except ImportError:
-    try:
-        # Fallback to development imports (when running locally)
-        from database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
-        from database.config import get_db, init_db, test_connection
-        from schemas import (
-            UserCreate, UserResponse, UserUpdate, UserLikeCreate, UserRatingCreate, 
-            UserNoteCreate, BoardCreate, BoardResponse, BoardUpdate, BoardArtworkCreate,
-            ArtworkResponse, Token
-        )
-        from services import UserService
-        from auth import get_current_user, create_access_token, get_password_hash
-        logging.info("✅ Using development import paths")
-    except ImportError as e:
-        logging.error(f"❌ All import attempts failed: {e}")
-        raise
+# Import schemas and models - use correct paths for container
+from database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
+from database.config import get_db, init_db, test_connection
+from schemas import (
+    UserCreate, UserResponse, UserUpdate, UserLikeCreate, UserRatingCreate, 
+    UserNoteCreate, BoardCreate, BoardResponse, BoardUpdate, BoardArtworkCreate,
+    ArtworkResponse, Token
+)
+from services import UserService
+from auth import get_current_user, create_access_token, get_password_hash
+
+logging.info("✅ Using production import paths")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -140,6 +123,17 @@ def root_endpoint():
         "message": "Art Explorer API",
         "version": "1.0.0",
         "status": "running",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+# Root endpoint
+@app.get("/")
+def root():
+    """Root endpoint"""
+    return {
+        "message": "Art Explorer API",
+        "status": "running",
+        "version": "1.0.0",
         "timestamp": datetime.utcnow().isoformat()
     }
 

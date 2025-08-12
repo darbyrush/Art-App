@@ -39,12 +39,21 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
   }
 
-  const login = async (credentials) => {
+  const login = async (username, password) => {
     try {
       isLoading.value = true
       error.value = null
       
-      const response = await apiClient.post('/auth/login', credentials)
+      // Create form data for OAuth2PasswordRequestForm
+      const formData = new URLSearchParams()
+      formData.append('username', username)
+      formData.append('password', password)
+      
+      const response = await apiClient.post('/auth/login', formData, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      })
       
       if (response.data.access_token) {
         setToken(response.data.access_token)
