@@ -49,7 +49,7 @@ RUN mkdir -p uploads/profile_pictures logs \
 USER appuser
 
 # Set Python path to include the current directory and ensure imports work correctly
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/app/api
 ENV PYTHONUNBUFFERED=1
 
 # Expose port (Railway will set the actual port via $PORT)
@@ -61,5 +61,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Use exec form to prevent shell expansion issues and ensure single process
 # Railway sets PORT environment variable, so we use that
-# Change to the api directory before running uvicorn to ensure correct import paths
-CMD exec sh -c "cd /app/api && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1" 
+# Run uvicorn from the root directory with the correct module path
+CMD exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 

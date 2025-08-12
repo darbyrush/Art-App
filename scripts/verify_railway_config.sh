@@ -60,25 +60,25 @@ else
     echo "❌ Health check does not point to /health endpoint"
 fi
 
-# Check if uvicorn is used
+# Check if it uses uvicorn
 if grep -q "uvicorn" docker/Dockerfile.backend; then
     echo "✅ Uses uvicorn for running the app"
 else
     echo "❌ Does not use uvicorn"
 fi
 
-# Check if it changes to api directory before running
-if grep -q "cd /app/api" docker/Dockerfile.backend; then
-    echo "✅ Changes to api directory before running uvicorn"
+# Check if it runs api.main:app
+if grep -q "api.main:app" docker/Dockerfile.backend; then
+    echo "✅ Runs api.main:app (correct for root directory)"
 else
-    echo "❌ Does not change to api directory before running uvicorn"
+    echo "❌ Does not run api.main:app"
 fi
 
-# Check if it runs main:app instead of api.main:app
-if grep -q "main:app" docker/Dockerfile.backend; then
-    echo "✅ Runs main:app (correct for api directory)"
+# Check PYTHONPATH setting
+if grep -q "PYTHONPATH=/app:/app/api" docker/Dockerfile.backend; then
+    echo "✅ PYTHONPATH includes both /app and /app/api"
 else
-    echo "❌ Does not run main:app"
+    echo "❌ PYTHONPATH not set correctly"
 fi
 
 echo ""
@@ -111,6 +111,13 @@ else
     echo "❌ main.py missing development import paths"
 fi
 
+# Check if main.py has robust CORS handling
+if grep -q "Add CORS middleware with robust configuration" api/main.py; then
+    echo "✅ main.py has robust CORS middleware handling"
+else
+    echo "❌ main.py missing robust CORS middleware handling"
+fi
+
 echo ""
 echo "🔍 Checking Railway configuration..."
 
@@ -135,7 +142,8 @@ echo "3. ✅ railway.json points to correct files"
 echo "4. ✅ Health check endpoint is /health"
 echo "5. ✅ Port configuration uses PORT environment variable"
 echo "6. ✅ Import paths work in both development and production"
-echo "7. ✅ Dockerfile changes to api directory before running uvicorn"
+echo "7. ✅ PYTHONPATH includes both /app and /app/api"
+echo "8. ✅ Robust CORS middleware handling with fallbacks"
 
 echo ""
 echo "🚀 To deploy to Railway:"
@@ -149,3 +157,4 @@ echo "2. Check Railway status: railway status"
 echo "3. Verify environment variables in Railway dashboard"
 echo "4. Check if the /health endpoint responds: curl https://your-app.railway.app/health"
 echo "5. Verify import paths work in container environment"
+echo "6. Use debug script: scripts/debug_container.py"

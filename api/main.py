@@ -23,7 +23,6 @@ try:
     )
     from api.services import UserService
     from api.auth import get_current_user, create_access_token, get_password_hash
-    from api.cors_config import get_cors_middleware
     logging.info("✅ Using production import paths")
 except ImportError:
     try:
@@ -37,7 +36,6 @@ except ImportError:
         )
         from services import UserService
         from auth import get_current_user, create_access_token, get_password_hash
-        from cors_config import get_cors_middleware
         logging.info("✅ Using development import paths")
     except ImportError as e:
         logging.error(f"❌ All import attempts failed: {e}")
@@ -54,8 +52,33 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add proper CORS middleware
-app.add_middleware(get_cors_middleware())
+# Add CORS middleware with robust configuration
+try:
+    # Try to use the external CORS config if available
+    from api.cors_config import get_cors_middleware
+    app.add_middleware(get_cors_middleware())
+    logger.info("✅ Using external CORS configuration")
+except ImportError:
+    try:
+        # Fallback to local CORS config
+        from cors_config import get_cors_middleware
+        app.add_middleware(get_cors_middleware())
+        logger.info("✅ Using local CORS configuration")
+    except ImportError:
+        # Final fallback: use basic CORS configuration
+        logger.warning("⚠️ External CORS config not available, using basic CORS")
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[
+                "https://myassemblage.art",
+                "https://www.myassemblage.art",
+                "http://localhost:3000",
+                "http://localhost:5173"
+            ],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
 # Simple startup event
 @app.on_event("startup")
