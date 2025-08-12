@@ -243,9 +243,271 @@ def get_user_boards(current_user: User = Depends(get_current_user), db: Session 
     """Get user's boards"""
     try:
         boards = db.query(Board).filter(Board.user_id == current_user.id).all()
+        
+        # Add artwork count to each board
+        for board in boards:
+            board.artwork_count = db.query(BoardArtwork).filter(BoardArtwork.board_id == board.id).count()
+        
         return boards
     except Exception as e:
         logger.error(f"Error getting boards: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/boards", response_model=BoardResponse)
+def create_board(board: BoardCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Create a new board"""
+    try:
+        db_board = Board(
+            name=board.name,
+            description=board.description,
+            is_public=board.is_public,
+            user_id=current_user.id
+        )
+        db.add(db_board)
+        db.commit()
+        db.refresh(db_board)
+        
+        # Add artwork count (will be 0 for new boards)
+        db_board.artwork_count = 0
+        
+        return db_board
+    except Exception as e:
+        logger.error(f"Error creating board: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/boards/{board_id}", response_model=BoardResponse)
+def get_board(board_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get a specific board"""
+    try:
+        board = db.query(Board).filter(Board.id == board_id, Board.user_id == current_user.id).first()
+        if not board:
+            raise HTTPException(status_code=404, detail="Board not found")
+        
+        # Add artwork count
+        board.artwork_count = db.query(BoardArtwork).filter(BoardArtwork.board_id == board.id).count()
+        
+        return board
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting board: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.put("/boards/{board_id}", response_model=BoardResponse)
+def update_board(board_id: int, board_update: BoardUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Update a board"""
+    try:
+        board = db.query(Board).filter(Board.id == board_id, Board.user_id == current_user.id).first()
+        if not board:
+            raise HTTPException(status_code=404, detail="Board not found")
+        
+        if board_update.name is not None:
+            board.name = board_update.name
+        if board_update.description is not None:
+            board.description = board_update.description
+        if board_update.is_public is not None:
+            board.is_public = board_update.is_public
+        
+        db.commit()
+        db.refresh(board)
+        
+        # Add artwork count
+        board.artwork_count = db.query(BoardArtwork).filter(BoardArtwork.board_id == board.id).count()
+        
+        return board
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating board: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.delete("/boards/{board_id}")
+def delete_board(board_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Delete a board"""
+    try:
+        board = db.query(Board).filter(Board.id == board_id, Board.user_id == current_user.id).first()
+        if not board:
+            raise HTTPException(status_code=404, detail="Board not found")
+        
+        db.delete(board)
+        db.commit()
+        return {"message": "Board deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting board: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/boards/{board_id}/artworks", response_model=List[ArtworkResponse])
+def get_board_artworks(board_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get artworks in a board"""
+    try:
+        board = db.query(Board).filter(Board.id == board_id, Board.user_id == current_user.id).first()
+        if not board:
+            raise HTTPException(status_code=404, detail="Board not found")
+        
+        # Get artworks through the BoardArtwork relationship
+        board_artworks = db.query(BoardArtwork).filter(BoardArtwork.board_id == board_id).all()
+        artwork_ids = [ba.artwork_id for ba in board_artworks]
+        
+        if not artwork_ids:
+            return []
+        
+        artworks = db.query(Artwork).filter(Artwork.id.in_(artwork_ids)).all()
+        return artworks
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting board artworks: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/boards/{board_id}/artworks")
+def add_artwork_to_board(board_id: int, board_artwork: BoardArtworkCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Add an artwork to a board"""
+    try:
+        board = db.query(Board).filter(Board.id == board_id, Board.user_id == current_user.id).first()
+        if not board:
+            raise HTTPException(status_code=404, detail="Board not found")
+        
+        # Check if artwork already exists in board
+        existing = db.query(BoardArtwork).filter(
+            BoardArtwork.board_id == board_id,
+            BoardArtwork.artwork_id == board_artwork.artwork_id
+        ).first()
+        
+        if existing:
+            raise HTTPException(status_code=409, detail="Artwork already in board")
+        
+        # Check if artwork exists
+        artwork = db.query(Artwork).filter(Artwork.id == board_artwork.artwork_id).first()
+        if not artwork:
+            raise HTTPException(status_code=404, detail="Artwork not found")
+        
+        db_board_artwork = BoardArtwork(
+            board_id=board_id,
+            artwork_id=board_artwork.artwork_id
+        )
+        db.add(db_board_artwork)
+        db.commit()
+        
+        return {"message": "Artwork added to board successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding artwork to board: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.delete("/boards/{board_id}/artworks/{artwork_id}")
+def remove_artwork_from_board(board_id: int, artwork_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Remove an artwork from a board"""
+    try:
+        board = db.query(Board).filter(Board.id == board_id, Board.user_id == current_user.id).first()
+        if not board:
+            raise HTTPException(status_code=404, detail="Board not found")
+        
+        board_artwork = db.query(BoardArtwork).filter(
+            BoardArtwork.board_id == board_id,
+            BoardArtwork.artwork_id == artwork_id
+        ).first()
+        
+        if not board_artwork:
+            raise HTTPException(status_code=404, detail="Artwork not in board")
+        
+        db.delete(board_artwork)
+        db.commit()
+        
+        return {"message": "Artwork removed from board successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing artwork from board: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# Liked artworks endpoints
+@app.get("/artworks/liked", response_model=List[ArtworkResponse])
+def get_liked_artworks(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    page: int = 1,
+    limit: int = 20,
+    sources: Optional[str] = None,
+    artist: Optional[str] = None,
+    date_from: Optional[int] = None,
+    date_to: Optional[int] = None,
+    sort_by: str = "date_liked"
+):
+    """Get user's liked artworks with filters"""
+    try:
+        query = db.query(Artwork).join(UserLike).filter(UserLike.user_id == current_user.id)
+        
+        # Apply filters
+        if sources and sources != "all":
+            source_list = sources.split(",")
+            query = query.filter(Artwork.source.in_(source_list))
+        
+        if artist:
+            query = query.filter(Artwork.artist.ilike(f"%{artist}%"))
+        
+        if date_from:
+            query = query.filter(Artwork.date >= date_from)
+        
+        if date_to:
+            query = query.filter(Artwork.date <= date_to)
+        
+        # Apply sorting
+        if sort_by == "title":
+            query = query.order_by(Artwork.title)
+        elif sort_by == "artist":
+            query = query.order_by(Artwork.artist)
+        elif sort_by == "date":
+            query = query.order_by(Artwork.date)
+        elif sort_by == "source":
+            query = query.order_by(Artwork.source)
+        else:  # date_liked (default)
+            query = query.order_by(UserLike.created_at.desc())
+        
+        # Apply pagination
+        offset = (page - 1) * limit
+        artworks = query.offset(offset).limit(limit).all()
+        
+        return artworks
+    except Exception as e:
+        logger.error(f"Error getting liked artworks: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/artworks/liked/filters")
+def get_liked_artworks_filter_options(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get filter options for liked artworks"""
+    try:
+        # Get unique sources
+        sources = db.query(Artwork.source).join(UserLike).filter(
+            UserLike.user_id == current_user.id
+        ).distinct().all()
+        source_list = [source[0] for source in sources if source[0]]
+        
+        # Get unique artists
+        artists = db.query(Artwork.artist).join(UserLike).filter(
+            UserLike.user_id == current_user.id,
+            Artwork.artist.isnot(None)
+        ).distinct().all()
+        artist_list = [artist[0] for artist in artists if artist[0]]
+        
+        # Get date range
+        date_range = db.query(
+            db.func.min(Artwork.date),
+            db.func.max(Artwork.date)
+        ).join(UserLike).filter(UserLike.user_id == current_user.id).first()
+        
+        return {
+            "sources": source_list,
+            "artists": artist_list,
+            "dateRange": {
+                "min": date_range[0] if date_range[0] else None,
+                "max": date_range[1] if date_range[1] else None
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error getting filter options: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 # Error handlers

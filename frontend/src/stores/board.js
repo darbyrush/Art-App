@@ -1,6 +1,15 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { apiClient } from '@/utils/apiClient'
+import { 
+  createBoard as apiCreateBoard,
+  getUserBoards,
+  getBoard,
+  updateBoard as apiUpdateBoard,
+  deleteBoard as apiDeleteBoard,
+  addArtworkToBoard,
+  removeArtworkFromBoard,
+  getBoardArtworks
+} from '@/utils/apiClient'
 
 export const useBoardStore = defineStore('board', () => {
   const boards = ref([])
@@ -17,7 +26,7 @@ export const useBoardStore = defineStore('board', () => {
   const createBoard = async (boardData) => {
     try {
       loading.value = true
-      const newBoard = await apiClient.createBoard(boardData)
+      const newBoard = await apiCreateBoard(boardData)
       boards.value.push(newBoard)
       return newBoard
     } catch (error) {
@@ -31,7 +40,7 @@ export const useBoardStore = defineStore('board', () => {
   const loadUserBoards = async () => {
     try {
       loading.value = true
-      const userBoards = await apiClient.getUserBoards()
+      const userBoards = await getUserBoards()
       boards.value = userBoards
       return userBoards
     } catch (error) {
@@ -45,7 +54,7 @@ export const useBoardStore = defineStore('board', () => {
   const loadBoard = async (boardId) => {
     try {
       loading.value = true
-      const board = await apiClient.getBoard(boardId)
+      const board = await getBoard(boardId)
       currentBoard.value = board
       return board
     } catch (error) {
@@ -59,7 +68,7 @@ export const useBoardStore = defineStore('board', () => {
   const updateBoard = async (boardId, boardData) => {
     try {
       loading.value = true
-      const updatedBoard = await apiClient.updateBoard(boardId, boardData)
+      const updatedBoard = await apiUpdateBoard(boardId, boardData)
       
       // Update in boards list
       const index = boards.value.findIndex(board => board.id === boardId)
@@ -84,7 +93,7 @@ export const useBoardStore = defineStore('board', () => {
   const deleteBoard = async (boardId) => {
     try {
       loading.value = true
-      await apiClient.deleteBoard(boardId)
+      await apiDeleteBoard(boardId)
       
       // Remove from boards list
       boards.value = boards.value.filter(board => board.id !== boardId)
@@ -107,7 +116,7 @@ export const useBoardStore = defineStore('board', () => {
   const addArtworkToBoard = async (boardId, artworkId) => {
     try {
       loading.value = true
-      const result = await apiClient.addArtworkToBoard(boardId, artworkId)
+      const result = await addArtworkToBoard(boardId, artworkId)
       
       // Reload board artworks if this is the current board
       if (currentBoard.value && currentBoard.value.id === boardId) {
@@ -139,7 +148,7 @@ export const useBoardStore = defineStore('board', () => {
   const removeArtworkFromBoard = async (boardId, artworkId) => {
     try {
       loading.value = true
-      const result = await apiClient.removeArtworkFromBoard(boardId, artworkId)
+      const result = await removeArtworkFromBoard(boardId, artworkId)
       
       // Remove from board artworks if this is the current board
       if (currentBoard.value && currentBoard.value.id === boardId) {
@@ -158,7 +167,7 @@ export const useBoardStore = defineStore('board', () => {
   const loadBoardArtworks = async (boardId) => {
     try {
       loading.value = true
-      const artworks = await apiClient.getBoardArtworks(boardId)
+      const artworks = await getBoardArtworks(boardId)
       boardArtworks.value = artworks
       return artworks
     } catch (error) {

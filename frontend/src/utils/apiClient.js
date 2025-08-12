@@ -437,6 +437,79 @@ export const getPopularArtworks = async (limit = 10) => {
   }
 }
 
+// Board-related API methods
+export const createBoard = async (boardData) => {
+  try {
+    const response = await apiClient.post('/boards', boardData)
+    return response.data
+  } catch (error) {
+    throw new Error(error.response?.data?.detail || error.message || 'Failed to create board')
+  }
+}
+
+export const getUserBoards = async () => {
+  try {
+    const response = await apiClient.get('/boards')
+    return response.data
+  } catch (error) {
+    throw new Error(error.response?.data?.detail || error.message || 'Failed to get user boards')
+  }
+}
+
+export const getBoard = async (boardId) => {
+  try {
+    const response = await apiClient.get(`/boards/${boardId}`)
+    return response.data
+  } catch (error) {
+    throw new Error(error.response?.data?.detail || error.message || 'Failed to get board')
+  }
+}
+
+export const updateBoard = async (boardId, boardData) => {
+  try {
+    const response = await apiClient.put(`/boards/${boardId}`, boardData)
+    return response.data
+  } catch (error) {
+    throw new Error(error.response?.data?.detail || error.message || 'Failed to update board')
+  }
+}
+
+export const deleteBoard = async (boardId) => {
+  try {
+    await apiClient.delete(`/boards/${boardId}`)
+    return { success: true }
+  } catch (error) {
+    throw new Error(error.response?.data?.detail || error.message || 'Failed to delete board')
+  }
+}
+
+export const addArtworkToBoard = async (boardId, artworkId) => {
+  try {
+    const response = await apiClient.post(`/boards/${boardId}/artworks`, { artwork_id: artworkId })
+    return response.data
+  } catch (error) {
+    throw new Error(error.response?.data?.detail || error.message || 'Failed to add artwork to board')
+  }
+}
+
+export const removeArtworkFromBoard = async (boardId, artworkId) => {
+  try {
+    await apiClient.delete(`/boards/${boardId}/artworks/${artworkId}`)
+    return { success: true }
+  } catch (error) {
+    throw new Error(error.response?.data?.detail || error.message || 'Failed to remove artwork from board')
+  }
+}
+
+export const getBoardArtworks = async (boardId) => {
+  try {
+    const response = await apiClient.get(`/boards/${boardId}/artworks`)
+    return response.data
+  } catch (error) {
+    throw new Error(error.response?.data?.detail || error.message || 'Failed to get board artworks')
+  }
+}
+
 // Export both the enhanced client and the original axios instance
 export { apiClient }
 export default apiClientEnhanced 
