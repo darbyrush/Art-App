@@ -4,8 +4,13 @@ import { useAuthStore } from '@/stores/auth'
 const routes = [
   {
     path: '/',
+    redirect: '/gallery'
+  },
+  {
+    path: '/gallery',
     name: 'Gallery',
-    component: () => import('@/views/GalleryView.vue')
+    component: () => import('@/views/GalleryView.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/boards',
