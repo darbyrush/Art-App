@@ -510,6 +510,116 @@ def get_liked_artworks_filter_options(current_user: User = Depends(get_current_u
         logger.error(f"Error getting filter options: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+# Artwork like/unlike endpoints
+@app.post("/artworks/{artwork_id}/like")
+def like_artwork(artwork_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Like an artwork"""
+    try:
+        # Check if artwork exists
+        artwork = db.query(Artwork).filter(Artwork.id == artwork_id).first()
+        if not artwork:
+            raise HTTPException(status_code=404, detail="Artwork not found")
+        
+        # Check if already liked
+        existing_like = db.query(UserLike).filter(
+            UserLike.user_id == current_user.id,
+            UserLike.artwork_id == artwork_id
+        ).first()
+        
+        if existing_like:
+            raise HTTPException(status_code=409, detail="Artwork already liked")
+        
+        # Create new like
+        new_like = UserLike(
+            user_id=current_user.id,
+            artwork_id=artwork_id,
+            liked=True
+        )
+        db.add(new_like)
+        db.commit()
+        
+        return {"message": "Artwork liked successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error liking artwork: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.delete("/artworks/{artwork_id}/like")
+def unlike_artwork(artwork_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Unlike an artwork"""
+    try:
+        # Find and delete the like
+        like = db.query(UserLike).filter(
+            UserLike.user_id == current_user.id,
+            UserLike.artwork_id == artwork_id
+        ).first()
+        
+        if not like:
+            raise HTTPException(status_code=404, detail="Artwork not liked")
+        
+        db.delete(like)
+        db.commit()
+        
+        return {"message": "Artwork unliked successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error unliking artwork: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# Gallery endpoint for random artworks
+@app.get("/artworks/gallery")
+def get_gallery_artworks(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    page: int = 1,
+    limit: int = 12,
+    sources: Optional[str] = None,
+    sort_by: str = "random"
+):
+    """Get random artworks for the gallery/exhibit page"""
+    try:
+        # Build base query
+        query = db.query(Artwork)
+        
+        # Apply source filter
+        if sources and sources != "all":
+            source_list = sources.split(",")
+            query = query.filter(Artwork.source.in_(source_list))
+        
+        # Apply sorting
+        if sort_by == "title":
+            query = query.order_by(Artwork.title)
+        elif sort_by == "artist":
+            query = query.order_by(Artwork.artist)
+        elif sort_by == "date":
+            query = query.order_by(Artwork.date)
+        elif sort_by == "source":
+            query = query.order_by(Artwork.source)
+        else:  # random (default)
+            # Use database random function for true randomness
+            query = query.order_by(db.func.random())
+        
+        # Apply pagination
+        offset = (page - 1) * limit
+        artworks = query.offset(offset).limit(limit).all()
+        
+        # Check if there are more artworks
+        total_count = query.count()
+        has_more = (offset + limit) < total_count
+        
+        return {
+            "artworks": artworks,
+            "page": page,
+            "limit": limit,
+            "total_count": total_count,
+            "has_more": has_more
+        }
+    except Exception as e:
+        logger.error(f"Error getting gallery artworks: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 # Error handlers
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
