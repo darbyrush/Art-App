@@ -177,7 +177,7 @@ class ArtworkService:
         if sources and sources != "all":
             source_list = sources.split(",")
             query = query.filter(Artwork.source.in_(source_list))
-        return query.order_by(db.func.random()).first()
+        return query.order_by(func.random()).first()
 
 class UserLikeService:
     def like_artwork(self, db: Session, user_id: str, artwork_id: str, liked: bool = True) -> bool:

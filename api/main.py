@@ -224,6 +224,138 @@ def read_users_me(current_user: User = Depends(get_current_user)):
     """Get current user"""
     return current_user
 
+@app.put("/users/me", response_model=UserResponse)
+def update_user_me(
+    user_update: UserUpdate, 
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    """Update current user"""
+    try:
+        # Update user fields
+        if user_update.username is not None:
+            current_user.username = user_update.username
+        if user_update.email is not None:
+            current_user.email = user_update.email
+        
+        db.commit()
+        db.refresh(current_user)
+        return current_user
+    except Exception as e:
+        logger.error(f"Error updating user: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/users/me/profile-picture")
+def upload_profile_picture(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Upload profile picture"""
+    try:
+        # Validate file type
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Validate file size (5MB limit)
+        if file.size > 5 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File size must be less than 5MB")
+        
+        # Create uploads directory if it doesn't exist
+        uploads_dir = "uploads/profile_pictures"
+        os.makedirs(uploads_dir, exist_ok=True)
+        
+        # Generate unique filename
+        file_extension = file.filename.split('.')[-1] if '.' in file.filename else 'jpg'
+        filename = f"{current_user.id}_{int(time.time())}.{file_extension}"
+        file_path = os.path.join(uploads_dir, filename)
+        
+        # Save file
+        with open(file_path, "wb") as buffer:
+            content = file.file.read()
+            buffer.write(content)
+        
+        # Update user profile picture URL
+        profile_picture_url = f"/uploads/profile_pictures/{filename}"
+        current_user.profile_picture = profile_picture_url
+        db.commit()
+        db.refresh(current_user)
+        
+        return {
+            "message": "Profile picture uploaded successfully",
+            "user": current_user
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading profile picture: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.delete("/users/me/profile-picture")
+def delete_profile_picture(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete profile picture"""
+    try:
+        if current_user.profile_picture:
+            # Remove old file if it exists
+            old_file_path = current_user.profile_picture.lstrip('/')
+            if os.path.exists(old_file_path):
+                os.remove(old_file_path)
+            
+            # Clear profile picture URL
+            current_user.profile_picture = None
+            db.commit()
+            db.refresh(current_user)
+        
+        return {"message": "Profile picture removed successfully"}
+    except Exception as e:
+        logger.error(f"Error deleting profile picture: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/users/stats")
+def get_user_stats(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get user statistics"""
+    try:
+        # Get liked artworks count
+        liked_artworks = db.query(UserLike).filter(
+            UserLike.user_id == current_user.id,
+            UserLike.liked == True
+        ).count()
+        
+        # Get unique museums/sources count
+        unique_sources = db.query(Artwork.source).join(UserLike).filter(
+            UserLike.user_id == current_user.id,
+            UserLike.liked == True
+        ).distinct().count()
+        
+        # Get ratings count
+        total_ratings = db.query(UserRating).filter(
+            UserRating.user_id == current_user.id
+        ).count()
+        
+        # Get notes count
+        total_notes = db.query(UserNote).filter(
+            UserNote.user_id == current_user.id
+        ).count()
+        
+        # Get boards count
+        total_boards = db.query(Board).filter(
+            Board.user_id == current_user.id
+        ).count()
+        
+        return {
+            "liked_artworks": liked_artworks,
+            "unique_museums": unique_sources,
+            "total_ratings": total_ratings,
+            "total_notes": total_notes,
+            "total_boards": total_boards
+        }
+    except Exception as e:
+        logger.error(f"Error getting user stats: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 # Artwork endpoints
 @app.get("/artworks", response_model=List[ArtworkResponse])
 def get_artworks(

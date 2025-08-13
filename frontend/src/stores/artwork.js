@@ -367,6 +367,16 @@ export const useArtworkStore = defineStore('artwork', () => {
     }
   }
 
+  const getUserStats = async () => {
+    try {
+      const response = await apiClient.get('/users/stats')
+      return response.data
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to get user stats'
+      throw new Error(errorMessage)
+    }
+  }
+
   const resetPagination = () => {
     currentPage.value = 1
     totalPages.value = 1
@@ -415,6 +425,7 @@ export const useArtworkStore = defineStore('artwork', () => {
     getGalleryArtworks,
     getExhibitArtworks,
     getLikedArtworksFilterOptions,
+    getUserStats,
     resetPagination,
     refreshArtworks,
     clearError,

@@ -116,6 +116,11 @@ class Board(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     user = relationship("User", back_populates="boards")
     board_artworks = relationship("BoardArtwork", back_populates="board")
+    
+    # Virtual property for artwork count (will be calculated in API)
+    @property
+    def artwork_count(self):
+        return len(self.board_artworks) if self.board_artworks else 0
 
 class BoardArtwork(Base):
     __tablename__ = "board_artworks"
