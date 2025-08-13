@@ -309,13 +309,13 @@ const loadMoreArtworks = async () => {
       sort_by: sortBy.value
     })
     
-    const response = await artworkStore.getGalleryArtworks({
+    const response = await artworkStore.getExhibitArtworks({
       page: page.value,
       sources: selectedSources.value || ['all'],
       sort_by: sortBy.value
     })
     
-    console.log('Gallery response:', response)
+    console.log('Exhibit response:', response)
     
     // Handle new optimized response format
     const newArtworks = response.artworks || response

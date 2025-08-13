@@ -346,6 +346,17 @@ export const useArtworkStore = defineStore('artwork', () => {
     }
   }
 
+  const getExhibitArtworks = async (params = {}) => {
+    try {
+      const response = await apiClient.get('/artworks/exhibit', { params })
+      return response.data
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to get exhibit artworks'
+      error.value = errorMessage
+      throw new Error(errorMessage)
+    }
+  }
+
   const getLikedArtworksFilterOptions = async () => {
     try {
       const response = await apiClient.get('/artworks/liked/filters')
@@ -402,6 +413,7 @@ export const useArtworkStore = defineStore('artwork', () => {
     likeArtwork,
     loadLikedArtworks,
     getGalleryArtworks,
+    getExhibitArtworks,
     getLikedArtworksFilterOptions,
     resetPagination,
     refreshArtworks,

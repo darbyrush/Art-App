@@ -713,6 +713,134 @@ def get_gallery_artworks(
         logger.error(f"Error details: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+# Exhibit endpoint for the main landing page
+@app.get("/artworks/exhibit")
+def get_exhibit_artworks(
+    db: Session = Depends(get_db),
+    page: int = 1,
+    limit: int = 12,
+    sources: Optional[str] = None,
+    sort_by: str = "random"
+):
+    """Get artworks for the exhibit page (public endpoint) - optimized for landing page"""
+    try:
+        logger.info(f"Getting exhibit artworks: page={page}, limit={limit}, sources={sources}, sort_by={sort_by}")
+        
+        # First, check if database is accessible
+        try:
+            # Simple test query to check database connection
+            test_count = db.query(Artwork).limit(1).count()
+            logger.info(f"Database connection test successful, sample count: {test_count}")
+        except Exception as db_error:
+            logger.error(f"Database connection error: {db_error}")
+            # Return a friendly message instead of crashing
+            return {
+                "artworks": [],
+                "page": page,
+                "limit": limit,
+                "total_count": 0,
+                "has_more": False,
+                "message": "Database temporarily unavailable. Please try again later."
+            }
+        
+        # Build base query
+        query = db.query(Artwork)
+        
+        # Check total artwork count
+        try:
+            total_artworks = query.count()
+            logger.info(f"Total artworks in database: {total_artworks}")
+        except Exception as count_error:
+            logger.error(f"Error counting artworks: {count_error}")
+            total_artworks = 0
+        
+        if total_artworks == 0:
+            logger.warning("No artworks found in database")
+            return {
+                "artworks": [],
+                "page": page,
+                "limit": limit,
+                "total_count": 0,
+                "has_more": False,
+                "message": "No artworks available at the moment. Please check back later."
+            }
+        
+        # Apply source filter
+        if sources and sources != "all":
+            try:
+                source_list = sources.split(",")
+                query = query.filter(Artwork.source.in_(source_list))
+                logger.info(f"Applied source filter: {source_list}")
+            except Exception as filter_error:
+                logger.error(f"Error applying source filter: {filter_error}")
+                # Continue without filter if it fails
+        
+        # Apply sorting
+        try:
+            if sort_by == "title":
+                query = query.order_by(Artwork.title)
+            elif sort_by == "artist":
+                query = query.order_by(Artwork.artist)
+            elif sort_by == "date":
+                query = query.order_by(Artwork.date)
+            elif sort_by == "source":
+                query = query.order_by(Artwork.source)
+            else:  # random (default)
+                # Use database random function for true randomness
+                query = query.order_by(db.func.random())
+            
+            logger.info(f"Applied sorting: {sort_by}")
+        except Exception as sort_error:
+            logger.error(f"Error applying sorting: {sort_error}")
+            # Default to random if sorting fails
+            query = query.order_by(db.func.random())
+        
+        # Apply pagination
+        try:
+            offset = (page - 1) * limit
+            artworks = query.offset(offset).limit(limit).all()
+            logger.info(f"Retrieved {len(artworks)} artworks")
+        except Exception as pagination_error:
+            logger.error(f"Error applying pagination: {pagination_error}")
+            # Try to get artworks without pagination
+            artworks = query.limit(limit).all()
+            logger.info(f"Retrieved {len(artworks)} artworks without pagination")
+        
+        # Check if there are more artworks
+        try:
+            total_count = query.count()
+            has_more = (offset + limit) < total_count
+        except Exception as count_error:
+            logger.error(f"Error checking for more artworks: {count_error}")
+            has_more = len(artworks) == limit  # Assume more if we got a full page
+        
+        result = {
+            "artworks": artworks,
+            "page": page,
+            "limit": limit,
+            "total_count": total_count,
+            "has_more": has_more
+        }
+        
+        logger.info(f"Exhibit endpoint result: {len(artworks)} artworks, has_more: {has_more}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting exhibit artworks: {e}")
+        logger.error(f"Error type: {type(e)}")
+        logger.error(f"Error details: {str(e)}")
+        
+        # Return a graceful error response instead of crashing
+        return {
+            "artworks": [],
+            "page": page,
+            "limit": limit,
+            "total_count": 0,
+            "has_more": False,
+            "error": "Failed to load artworks. Please try again later.",
+            "message": "We're experiencing technical difficulties. Please refresh the page or try again later."
+        }
+
 # Error handlers
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
