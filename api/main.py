@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
-    title="Art Explorer API",
-    description="Simple Art Explorer API - Clean and Working",
+    title="My Assemblage API",
+    description="Simple My Assemblage API - Clean and Working",
     version="1.0.0"
 )
 
@@ -84,7 +84,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     """Simple startup - just initialize database"""
-    logger.info("🚀 Starting Art Explorer API...")
+    logger.info("🚀 Starting My Assemblage API...")
     
     try:
         # Ensure uploads directory exists
@@ -114,7 +114,7 @@ async def startup_event():
         logger.error(f"❌ Startup error: {e}")
         logger.info("🔄 Continuing anyway - don't crash the app")
     
-    logger.info("🎉 Art Explorer API startup completed!")
+    logger.info("🎉 My Assemblage API startup completed!")
 
 # Mount static files
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
@@ -124,7 +124,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 def root_endpoint():
     """Root endpoint - API information"""
     return {
-        "message": "Art Explorer API",
+        "message": "My Assemblage API",
         "version": "1.0.0",
         "status": "running",
         "timestamp": datetime.utcnow().isoformat()
@@ -135,7 +135,7 @@ def root_endpoint():
 def root():
     """Root endpoint"""
     return {
-        "message": "Art Explorer API",
+        "message": "My Assemblage API",
         "status": "running",
         "version": "1.0.0",
         "timestamp": datetime.utcnow().isoformat()
@@ -557,6 +557,52 @@ def remove_artwork_from_board(board_id: int, artwork_id: int, current_user: User
         raise
     except Exception as e:
         logger.error(f"Error removing artwork from board: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# Rating endpoints
+@app.post("/artworks/{artwork_id}/rate")
+def rate_artwork(
+    artwork_id: str,
+    rating_data: UserRatingCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Rate an artwork (1-5 stars)"""
+    try:
+        # Validate rating (1-5 stars)
+        if not 1 <= rating_data.rating <= 5:
+            raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+        
+        # Check if artwork exists
+        artwork = db.query(Artwork).filter(Artwork.id == artwork_id).first()
+        if not artwork:
+            raise HTTPException(status_code=404, detail="Artwork not found")
+        
+        # Check if user already rated this artwork
+        existing_rating = db.query(UserRating).filter(
+            UserRating.user_id == current_user.id,
+            UserRating.artwork_id == artwork_id
+        ).first()
+        
+        if existing_rating:
+            # Update existing rating
+            existing_rating.rating = rating_data.rating
+            existing_rating.created_at = datetime.utcnow()
+        else:
+            # Create new rating
+            new_rating = UserRating(
+                user_id=current_user.id,
+                artwork_id=artwork_id,
+                rating=rating_data.rating
+            )
+            db.add(new_rating)
+        
+        db.commit()
+        return {"message": "Rating saved successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error rating artwork: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 # Liked artworks endpoints

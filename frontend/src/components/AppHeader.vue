@@ -7,11 +7,11 @@
           <!-- Logo/Home Link - Only link when authenticated -->
           <div v-if="user" class="text-lg sm:text-2xl font-serif font-bold text-gray-900">
             <router-link to="/" class="hover:text-primary-600 transition-colors">
-              🎨 Art Explorer
+              🎨 My Assemblage
             </router-link>
           </div>
           <div v-else class="text-lg sm:text-2xl font-serif font-bold text-gray-900">
-            🎨 Art Explorer
+            🎨 My Assemblage
           </div>
           <slot name="title"></slot>
         </div>

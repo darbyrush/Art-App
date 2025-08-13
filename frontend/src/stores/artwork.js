@@ -377,6 +377,16 @@ export const useArtworkStore = defineStore('artwork', () => {
     }
   }
 
+  const rateArtwork = async (artworkId, rating) => {
+    try {
+      const response = await apiClient.post(`/artworks/${artworkId}/rate`, { rating })
+      return response.data
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to rate artwork'
+      throw new Error(errorMessage)
+    }
+  }
+
   const resetPagination = () => {
     currentPage.value = 1
     totalPages.value = 1
@@ -426,6 +436,7 @@ export const useArtworkStore = defineStore('artwork', () => {
     getExhibitArtworks,
     getLikedArtworksFilterOptions,
     getUserStats,
+    rateArtwork,
     resetPagination,
     refreshArtworks,
     clearError,

@@ -5,7 +5,7 @@
       <!-- Welcome Section -->
       <div class="text-center mb-12">
         <h1 class="text-4xl sm:text-6xl font-serif font-bold text-gray-900 mb-6">
-          🎨 Welcome to Art Explorer
+          🎨 Welcome to My Assemblage
         </h1>
         <p class="text-xl text-gray-600 max-w-3xl mx-auto">
           Discover amazing artworks from world-renowned museums and galleries. 
@@ -153,13 +153,7 @@
                   <span class="text-lg sm:text-xl">❤️</span>
                   <span class="text-xs sm:text-sm">Like</span>
                 </button>
-                <button
-                  @click="showRatingModal = true; selectedArtwork = artwork"
-                  class="flex items-center space-x-1 text-gray-600 hover:text-yellow-500 transition-colors p-2 rounded-lg active:bg-gray-100 touch-manipulation"
-                >
-                  <span class="text-lg sm:text-xl">⭐</span>
-                  <span class="text-xs sm:text-sm">Rate</span>
-                </button>
+
               </div>
             </div>
           </div>
@@ -196,31 +190,7 @@
       </div>
     </main>
 
-    <!-- Rating Modal -->
-    <div v-if="showRatingModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-lg p-4 sm:p-6 max-w-sm w-full mx-2 sm:mx-4">
-        <h3 class="text-base sm:text-lg font-semibold mb-4">Rate this artwork</h3>
-        <div class="flex justify-center space-x-1 sm:space-x-2 mb-4">
-          <button
-            v-for="star in 5"
-            :key="star"
-            @click="rateArtwork(star)"
-            class="text-xl sm:text-2xl hover:text-yellow-400 transition-colors"
-            :class="star <= selectedRating ? 'text-yellow-400' : 'text-gray-300'"
-          >
-            ⭐
-          </button>
-        </div>
-        <div class="flex space-x-2">
-          <button @click="showRatingModal = false" class="btn-secondary flex-1 text-sm sm:text-base">
-            Cancel
-          </button>
-          <button @click="submitRating" class="btn-primary flex-1 text-sm sm:text-base">
-            Submit
-          </button>
-        </div>
-      </div>
-    </div>
+
   </div>
 </template>
 
@@ -253,9 +223,7 @@ const isInitialized = ref(false)
 const showFilters = ref(false)
 
 // Modal state
-const showRatingModal = ref(false)
 const selectedArtwork = ref(null)
-const selectedRating = ref(0)
 
 // Intersection Observer for infinite scrolling
 const loadMoreTrigger = ref(null)
@@ -376,22 +344,7 @@ const likeArtwork = async (artwork) => {
   }
 }
 
-const rateArtwork = (rating) => {
-  selectedRating.value = rating
-}
 
-const submitRating = async () => {
-  if (!selectedArtwork.value || selectedRating.value === 0) return
-  
-  try {
-    await artworkStore.rateArtwork(selectedArtwork.value.id, selectedRating.value)
-    showRatingModal.value = false
-    selectedRating.value = 0
-    selectedArtwork.value = null
-  } catch (error) {
-    console.error('Error rating artwork:', error)
-  }
-}
 
 const handleImageError = (event) => {
   const fallbackUrl = getFallbackImageUrl(event.target.dataset.source)

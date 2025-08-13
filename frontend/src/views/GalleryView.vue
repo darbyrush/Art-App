@@ -264,6 +264,13 @@
                   >
                     📋
                   </button>
+                  <button 
+                    @click="showRatingModal = true; selectedArtwork = artwork"
+                    class="action-btn"
+                    title="Rate artwork"
+                  >
+                    ⭐
+                  </button>
                 </div>
               </div>
             </div>
@@ -426,8 +433,8 @@
           <div class="mb-6">
             <label class="flex items-center">
               <input
-                v-model="newBoard.is_public"
                 type="checkbox"
+                v-model="newBoard.is_public"
                 class="mr-2"
               >
               <span class="text-sm text-gray-700">Make this board public</span>
@@ -451,6 +458,39 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Rating Modal -->
+    <div v-if="showRatingModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-lg p-6 max-w-md w-full modal-content">
+        <h3 class="text-lg font-semibold mb-4">Rate Artwork</h3>
+        
+        <div v-if="selectedArtwork" class="mb-4 p-3 bg-gray-50 rounded">
+          <p class="text-sm text-gray-600">Rating: <strong>{{ selectedArtwork.title }}</strong></p>
+        </div>
+        
+        <!-- Star Rating -->
+        <div class="flex justify-center space-x-2 mb-6">
+          <button
+            v-for="star in 5"
+            :key="star"
+            @click="rateArtwork(star)"
+            class="star-btn text-3xl transition-colors duration-200 hover:scale-110"
+            :class="star <= selectedRating ? 'text-yellow-400' : 'text-gray-300'"
+          >
+            ⭐
+          </button>
+        </div>
+        
+        <div class="flex space-x-3">
+          <button @click="showRatingModal = false" class="btn-secondary flex-1 text-sm sm:text-base">
+            Cancel
+          </button>
+          <button @click="submitRating" class="btn-primary flex-1 text-sm sm:text-base">
+            Submit Rating
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -479,7 +519,9 @@ const loading = ref(false)
 const creating = ref(false)
 const showBoardModal = ref(false)
 const showCreateModal = ref(false)
+const showRatingModal = ref(false)
 const selectedArtwork = ref(null)
+const selectedRating = ref(0)
 const boardSearch = ref('')
 
 const newBoard = ref({
@@ -803,6 +845,25 @@ const createBoard = async () => {
   }
 }
 
+const rateArtwork = (rating) => {
+  selectedRating.value = rating
+}
+
+const submitRating = async () => {
+  if (!selectedArtwork.value || selectedRating.value === 0) return
+  
+  try {
+    await artworkStore.rateArtwork(selectedArtwork.value.id, selectedRating.value)
+    showRatingModal.value = false
+    selectedRating.value = 0
+    selectedArtwork.value = null
+    show('Rating submitted successfully!', 'success')
+  } catch (error) {
+    console.error('Error rating artwork:', error)
+    show('Failed to submit rating. Please try again.', 'error')
+  }
+}
+
 const handleImageError = (event) => {
           event.target.src = `${config.apiBaseUrl}/placeholder/default.jpg?t=${Date.now()}`
 }
@@ -957,8 +1018,22 @@ onMounted(() => {
   transition: opacity 0.2s ease;
 }
 
-.artwork-card:hover .artwork-overlay {
+.artwork-card:hover .artwork-overlay,
+.artwork-card:focus-within .artwork-overlay {
   opacity: 1;
+}
+
+/* Mobile: Always show overlay on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .artwork-card .artwork-overlay {
+    opacity: 1;
+  }
+  
+  /* Make action buttons more prominent on mobile */
+  .action-btn {
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
 }
 
 .overlay-actions {
@@ -974,10 +1049,42 @@ onMounted(() => {
   cursor: pointer;
   font-size: 16px;
   transition: background-color 0.2s ease;
+  touch-action: manipulation;
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.action-btn:hover {
+.action-btn:hover,
+.action-btn:active {
   background: rgba(255, 255, 255, 1);
+}
+
+/* Mobile touch feedback */
+@media (hover: none) and (pointer: coarse) {
+  .action-btn:active {
+    background: rgba(255, 255, 255, 1);
+    transform: scale(0.95);
+  }
+}
+
+/* Star rating buttons - mobile optimized */
+.star-btn {
+  touch-action: manipulation;
+  min-height: 48px;
+  min-width: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .star-btn:active {
+    transform: scale(0.9);
+  }
 }
 
 .artwork-info {
@@ -1042,6 +1149,23 @@ onMounted(() => {
   
   .artwork-title {
     font-size: 14px;
+  }
+  
+  /* Mobile modal improvements */
+  .modal-content {
+    margin: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+  }
+  
+  /* Better mobile button spacing */
+  .overlay-actions {
+    gap: 12px;
+  }
+  
+  .action-btn {
+    padding: 12px 16px;
+    font-size: 18px;
   }
 }
 </style> 

@@ -3,7 +3,7 @@
     <div class="max-w-md w-full space-y-8">
       <div>
         <div class="text-center">
-          <h1 class="text-4xl font-serif font-bold text-gray-900 mb-2">🎨 Art Explorer</h1>
+          <h1 class="text-4xl font-serif font-bold text-gray-900 mb-2">🎨 My Assemblage</h1>
           <h2 class="text-2xl font-semibold text-gray-900">Sign in to your account</h2>
           <p class="mt-2 text-sm text-gray-600">
             Or
