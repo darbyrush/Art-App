@@ -2,10 +2,10 @@ import logging
 from typing import List, Optional, Dict
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, text
-from api.database.models import User, Artwork, UserLike, UserRating, UserNote, Board, BoardArtwork, ImageCache
-from api.schemas import UserCreate, UserResponse, UserUpdate, ArtworkResponse, BoardCreate, BoardUpdate, BoardResponse, BoardArtworkCreate, BoardArtworkResponse
-from api.auth import get_password_hash, verify_password
-from api.cache import cache_user_by_username, cache_artwork_by_id, invalidate_user_cache, invalidate_artwork_cache
+from database.models import User, Artwork, UserLike, UserRating, UserNote, Board, BoardArtwork, ImageCache
+from schemas import UserCreate, UserResponse, UserUpdate, ArtworkResponse, BoardCreate, BoardUpdate, BoardResponse, BoardArtworkCreate, BoardArtworkResponse
+from auth import get_password_hash, verify_password
+from cache import cache_user_by_username, cache_artwork_by_id, invalidate_user_cache, invalidate_artwork_cache
 from datetime import datetime, timedelta
 import base64
 from io import BytesIO

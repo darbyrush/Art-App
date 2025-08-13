@@ -16,15 +16,15 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from api.database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
-from api.database.config import get_db, init_db, test_connection
-from api.schemas import (
+from database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
+from database.config import get_db, init_db, test_connection
+from schemas import (
     UserCreate, UserResponse, UserUpdate, UserLikeCreate, UserRatingCreate, 
     UserNoteCreate, BoardCreate, BoardResponse, BoardUpdate, BoardArtworkCreate,
     ArtworkResponse, Token
 )
-from api.services import UserService
-from api.auth import get_current_user, create_access_token, get_password_hash
+from services import UserService
+from auth import get_current_user, create_access_token, get_password_hash
 
 logging.info("✅ Using production import paths")
 
