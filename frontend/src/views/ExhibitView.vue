@@ -20,6 +20,21 @@
         <p class="text-blue-700">Loading state: {{ loading }}</p>
         <p class="text-blue-700">Artworks count: {{ artworks.length }}</p>
         <p class="text-blue-700">Error: {{ error || 'None' }}</p>
+        <p class="text-blue-700">Current route: {{ $route.path }}</p>
+        <p class="text-blue-700">Route name: {{ $route.name }}</p>
+        
+        <!-- Test Navigation Buttons -->
+        <div class="mt-4 space-x-2">
+          <button @click="testNavigation('/exhibit')" class="px-3 py-1 bg-blue-500 text-white rounded text-sm">
+            Test: Go to Exhibit
+          </button>
+          <button @click="testNavigation('/gallery')" class="px-3 py-1 bg-green-500 text-white rounded text-sm">
+            Test: Go to Gallery
+          </button>
+          <button @click="testNavigation('/boards')" class="px-3 py-1 bg-purple-500 text-white rounded text-sm">
+            Test: Go to Boards
+          </button>
+        </div>
       </div>
       
       <!-- Loading State -->
@@ -190,9 +205,18 @@ const likeArtwork = async (artwork) => {
   }
 }
 
+// Test navigation function
+const testNavigation = (path) => {
+  console.log('Navigating to:', path)
+  router.push(path)
+}
+
 // Lifecycle
 onMounted(() => {
-  console.log('ExhibitView mounted')
+  console.log('ExhibitView mounted successfully!')
+  console.log('Current route:', router.currentRoute.value)
+  console.log('Auth state:', authStore.isAuthenticated)
+  console.log('User:', authStore.user)
   // Don't auto-load artworks, let user click the button
 })
 </script>

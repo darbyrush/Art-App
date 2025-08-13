@@ -19,9 +19,9 @@
         <!-- Center: Navigation -->
         <nav v-if="user" class="hidden md:flex items-center space-x-4">
           <router-link 
-            to="/" 
+            to="/exhibit" 
             class="text-sm text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md transition-colors"
-            :class="{ 'bg-gray-100 text-gray-900': $route.path === '/' }"
+            :class="{ 'bg-gray-100 text-gray-900': $route.path === '/exhibit' }"
           >
             Exhibit
           </router-link>

@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 const routes = [
   {
     path: '/',
-    redirect: '/gallery'
+    redirect: '/exhibit'
   },
   {
     path: '/gallery',
@@ -53,11 +53,14 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
+  console.log('Router navigation:', { from: from.path, to: to.path, toName: to.name })
   const authStore = useAuthStore()
   
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+    console.log('Redirecting to login - requires auth')
     next('/login')
   } else {
+    console.log('Navigation allowed')
     next()
   }
 })
