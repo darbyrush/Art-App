@@ -6,7 +6,7 @@ export const config = {
   apiBaseUrl: import.meta.env.VERCEL_RAILWAY_URL || 
                import.meta.env.RAILWAY_URL ||
                import.meta.env.VITE_API_BASE_URL ||
-               'https://api.myassemblage.art',
+               'https://art-app-production.up.railway.app',
   
   // App settings
   appName: 'My Assemblage',
@@ -37,7 +37,7 @@ if (import.meta.env.PROD) {
     config.apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     console.log('🔗 Using custom API base URL')
   } else {
-    config.apiBaseUrl = 'https://api.myassemblage.art'
+    config.apiBaseUrl = 'https://art-app-production.up.railway.app'
     console.log('🌐 Using fallback Railway URL')
   }
 }
