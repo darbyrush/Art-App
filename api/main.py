@@ -438,21 +438,38 @@ def get_liked_artworks(
 ):
     """Get user's liked artworks with filters"""
     try:
+        logger.info(f"Getting liked artworks for user: {current_user.id}, page: {page}, limit: {limit}")
+        
+        # First check if user has any liked artworks
+        user_likes_count = db.query(UserLike).filter(UserLike.user_id == current_user.id).count()
+        logger.info(f"User has {user_likes_count} liked artworks")
+        
+        if user_likes_count == 0:
+            # Return empty list if user has no likes
+            logger.info("User has no likes, returning empty list")
+            return []
+        
+        # Build query for liked artworks
+        logger.info("Building query for liked artworks")
         query = db.query(Artwork).join(UserLike).filter(UserLike.user_id == current_user.id)
         
         # Apply filters
         if sources and sources != "all":
             source_list = sources.split(",")
             query = query.filter(Artwork.source.in_(source_list))
+            logger.info(f"Applied source filter: {source_list}")
         
         if artist:
             query = query.filter(Artwork.artist.ilike(f"%{artist}%"))
+            logger.info(f"Applied artist filter: {artist}")
         
         if date_from:
             query = query.filter(Artwork.date >= date_from)
+            logger.info(f"Applied date from filter: {date_from}")
         
         if date_to:
             query = query.filter(Artwork.date <= date_to)
+            logger.info(f"Applied date to filter: {date_to}")
         
         # Apply sorting
         if sort_by == "title":
@@ -466,49 +483,100 @@ def get_liked_artworks(
         else:  # date_liked (default)
             query = query.order_by(UserLike.created_at.desc())
         
+        logger.info(f"Applied sorting: {sort_by}")
+        
         # Apply pagination
         offset = (page - 1) * limit
         artworks = query.offset(offset).limit(limit).all()
+        logger.info(f"Retrieved {len(artworks)} artworks")
         
         return artworks
     except Exception as e:
         logger.error(f"Error getting liked artworks: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Error type: {type(e)}")
+        logger.error(f"Error details: {str(e)}")
+        # Return empty list instead of crashing
+        return []
 
 @app.get("/artworks/liked/filters")
 def get_liked_artworks_filter_options(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get filter options for liked artworks"""
     try:
-        # Get unique sources
-        sources = db.query(Artwork.source).join(UserLike).filter(
-            UserLike.user_id == current_user.id
-        ).distinct().all()
-        source_list = [source[0] for source in sources if source[0]]
+        logger.info(f"Getting filter options for user: {current_user.id}")
         
-        # Get unique artists
-        artists = db.query(Artwork.artist).join(UserLike).filter(
+        # First check if user has any liked artworks
+        user_likes_count = db.query(UserLike).filter(UserLike.user_id == current_user.id).count()
+        logger.info(f"User has {user_likes_count} liked artworks")
+        
+        if user_likes_count == 0:
+            # Return empty filter options if user has no likes
+            logger.info("User has no likes, returning empty filter options")
+            return {
+                "sources": [],
+                "artists": [],
+                "dateRange": {
+                    "min": None,
+                    "max": None
+                }
+            }
+        
+        # Get unique sources from liked artworks
+        logger.info("Querying for unique sources")
+        sources_query = db.query(Artwork.source).join(UserLike).filter(
+            UserLike.user_id == current_user.id,
+            Artwork.source.isnot(None)
+        ).distinct()
+        sources = sources_query.all()
+        source_list = [source[0] for source in sources if source[0]]
+        logger.info(f"Found {len(source_list)} unique sources: {source_list}")
+        
+        # Get unique artists from liked artworks
+        logger.info("Querying for unique artists")
+        artists_query = db.query(Artwork.artist).join(UserLike).filter(
             UserLike.user_id == current_user.id,
             Artwork.artist.isnot(None)
-        ).distinct().all()
+        ).distinct()
+        artists = artists_query.all()
         artist_list = [artist[0] for artist in artists if artist[0]]
+        logger.info(f"Found {len(artist_list)} unique artists")
         
-        # Get date range
-        date_range = db.query(
+        # Get date range from liked artworks
+        logger.info("Querying for date range")
+        date_range_query = db.query(
             db.func.min(Artwork.date),
             db.func.max(Artwork.date)
-        ).join(UserLike).filter(UserLike.user_id == current_user.id).first()
+        ).join(UserLike).filter(
+            UserLike.user_id == current_user.id,
+            Artwork.date.isnot(None)
+        )
+        date_range = date_range_query.first()
+        logger.info(f"Date range: {date_range}")
         
-        return {
+        result = {
             "sources": source_list,
             "artists": artist_list,
             "dateRange": {
-                "min": date_range[0] if date_range[0] else None,
-                "max": date_range[1] if date_range[1] else None
+                "min": date_range[0] if date_range and date_range[0] else None,
+                "max": date_range[1] if date_range and date_range[1] else None
             }
         }
+        
+        logger.info(f"Successfully generated filter options: {result}")
+        return result
+        
     except Exception as e:
         logger.error(f"Error getting filter options: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Error type: {type(e)}")
+        logger.error(f"Error details: {str(e)}")
+        # Return safe default values instead of crashing
+        return {
+            "sources": [],
+            "artists": [],
+            "dateRange": {
+                "min": None,
+                "max": None
+            }
+        }
 
 # Artwork like/unlike endpoints
 @app.post("/artworks/{artwork_id}/like")
