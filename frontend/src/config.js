@@ -6,10 +6,10 @@ export const config = {
   apiBaseUrl: import.meta.env.VERCEL_RAILWAY_URL || 
                import.meta.env.RAILWAY_URL ||
                import.meta.env.VITE_API_BASE_URL ||
-               'https://art-app-production.up.railway.app',
+               'https://api.myassemblage.art',
   
   // App settings
-  appName: 'Art Explorer',
+  appName: 'My Assemblage',
   version: '1.0.0',
   
   // Feature flags
@@ -37,7 +37,7 @@ if (import.meta.env.PROD) {
     config.apiBaseUrl = import.meta.env.VITE_API_BASE_URL
     console.log('🔗 Using custom API base URL')
   } else {
-    config.apiBaseUrl = 'https://art-app-production.up.railway.app'
+    config.apiBaseUrl = 'https://api.myassemblage.art'
     console.log('🌐 Using fallback Railway URL')
   }
 }

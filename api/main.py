@@ -216,6 +216,8 @@ def auth_register(user: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Service temporarily unavailable")
     except Exception as e:
         logger.error(f"Registration error: {e}")
+        logger.error(f"Error type: {type(e)}")
+        logger.error(f"Error details: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 # User endpoints

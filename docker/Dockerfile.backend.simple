@@ -26,8 +26,8 @@ RUN useradd --create-home --shell /bin/bash appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
-# Set Python path to include both /app and /app/api for proper imports
-ENV PYTHONPATH=/app:/app/api
+# Set Python path to include the app directory for proper imports
+ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
 # Expose port (Railway will set the actual port via $PORT)
