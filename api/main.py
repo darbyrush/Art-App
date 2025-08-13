@@ -639,22 +639,38 @@ def unlike_artwork(artwork_id: str, current_user: User = Depends(get_current_use
 # Gallery endpoint for random artworks
 @app.get("/artworks/gallery")
 def get_gallery_artworks(
-    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     page: int = 1,
     limit: int = 12,
     sources: Optional[str] = None,
     sort_by: str = "random"
 ):
-    """Get random artworks for the gallery/exhibit page"""
+    """Get random artworks for the gallery/exhibit page (public endpoint)"""
     try:
+        logger.info(f"Getting gallery artworks: page={page}, limit={limit}, sources={sources}, sort_by={sort_by}")
+        
         # Build base query
         query = db.query(Artwork)
+        
+        # Check total artwork count
+        total_artworks = query.count()
+        logger.info(f"Total artworks in database: {total_artworks}")
+        
+        if total_artworks == 0:
+            logger.warning("No artworks found in database")
+            return {
+                "artworks": [],
+                "page": page,
+                "limit": limit,
+                "total_count": 0,
+                "has_more": False
+            }
         
         # Apply source filter
         if sources and sources != "all":
             source_list = sources.split(",")
             query = query.filter(Artwork.source.in_(source_list))
+            logger.info(f"Applied source filter: {source_list}")
         
         # Apply sorting
         if sort_by == "title":
@@ -669,23 +685,32 @@ def get_gallery_artworks(
             # Use database random function for true randomness
             query = query.order_by(db.func.random())
         
+        logger.info(f"Applied sorting: {sort_by}")
+        
         # Apply pagination
         offset = (page - 1) * limit
         artworks = query.offset(offset).limit(limit).all()
+        logger.info(f"Retrieved {len(artworks)} artworks")
         
         # Check if there are more artworks
         total_count = query.count()
         has_more = (offset + limit) < total_count
         
-        return {
+        result = {
             "artworks": artworks,
             "page": page,
             "limit": limit,
             "total_count": total_count,
             "has_more": has_more
         }
+        
+        logger.info(f"Gallery endpoint result: {len(artworks)} artworks, has_more: {has_more}")
+        return result
+        
     except Exception as e:
         logger.error(f"Error getting gallery artworks: {e}")
+        logger.error(f"Error type: {type(e)}")
+        logger.error(f"Error details: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 # Error handlers

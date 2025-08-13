@@ -303,11 +303,19 @@ const loadMoreArtworks = async () => {
   
   try {
     isLoadingMore.value = true
+    console.log('Loading artworks with params:', {
+      page: page.value,
+      sources: selectedSources.value || ['all'],
+      sort_by: sortBy.value
+    })
+    
     const response = await artworkStore.getGalleryArtworks({
       page: page.value,
       sources: selectedSources.value || ['all'],
       sort_by: sortBy.value
     })
+    
+    console.log('Gallery response:', response)
     
     // Handle new optimized response format
     const newArtworks = response.artworks || response
@@ -323,6 +331,7 @@ const loadMoreArtworks = async () => {
         page.value++
         // Use server-provided has_more if available
         hasMore.value = hasMoreFromResponse && newArtworks.length === 12
+        console.log(`Added ${uniqueNewArtworks.length} new artworks. Total: ${artworks.value.length}`)
       } else {
         // If all artworks are duplicates, try next page
         page.value++
@@ -330,11 +339,15 @@ const loadMoreArtworks = async () => {
       }
     } else {
       hasMore.value = false
+      console.log('No more artworks available')
     }
   } catch (error) {
     console.error('Error loading artworks:', error)
     if (error.response?.status === 401) {
       router.push('/login')
+    } else {
+      // Show user-friendly error message
+      console.error('Failed to load artworks. Please try again.')
     }
   } finally {
     loading.value = false
@@ -343,6 +356,15 @@ const loadMoreArtworks = async () => {
 }
 
 const likeArtwork = async (artwork) => {
+  // Check if user is authenticated
+  if (!authStore.isAuthenticated) {
+    // Show login prompt or redirect to login
+    if (confirm('You need to log in to like artworks. Would you like to go to the login page?')) {
+      router.push('/login')
+    }
+    return
+  }
+  
   try {
     await artworkStore.likeArtwork(artwork.id, true)
     artwork.showHeart = true
@@ -501,13 +523,7 @@ const setupIntersectionObserver = () => {
 
 // Lifecycle
 onMounted(() => {
-  // Check authentication first
-  if (!authStore.isAuthenticated) {
-    router.push('/login')
-    return
-  }
-  
-  // Load initial artworks
+  // Load initial artworks (no authentication required)
   loadMoreArtworks()
   
   // Setup intersection observer after initial load
