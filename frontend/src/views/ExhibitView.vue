@@ -326,17 +326,17 @@ const loadMoreArtworks = async () => {
       const existingIds = new Set(artworks.value.map(a => a.id))
       const uniqueNewArtworks = newArtworks.filter(artwork => !existingIds.has(artwork.id))
       
-      if (uniqueNewArtworks.length > 0) {
-        artworks.value.push(...uniqueNewArtworks)
-        page.value++
-        // Use server-provided has_more if available
-        hasMore.value = hasMoreFromResponse && newArtworks.length === 12
-        console.log(`Added ${uniqueNewArtworks.length} new artworks. Total: ${artworks.value.length}`)
-      } else {
-        // If all artworks are duplicates, try next page
-        page.value++
-        await loadMoreArtworks()
-      }
+              if (uniqueNewArtworks.length > 0) {
+          artworks.value.push(...uniqueNewArtworks)
+          page.value++
+          // Use server-provided has_more value directly
+          hasMore.value = hasMoreFromResponse
+          console.log(`Added ${uniqueNewArtworks.length} new artworks. Total: ${artworks.value.length}`)
+        } else {
+          // If all artworks are duplicates, try next page
+          page.value++
+          await loadMoreArtworks()
+        }
     } else {
       hasMore.value = false
       console.log('No more artworks available')

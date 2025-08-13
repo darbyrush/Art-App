@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, func
 from datetime import datetime, timedelta
 import os
 import time
@@ -12,6 +12,10 @@ import logging
 from typing import List, Optional
 
 # Import schemas and models - use correct paths for container
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
 from database.config import get_db, init_db, test_connection
 from schemas import (
@@ -683,7 +687,7 @@ def get_gallery_artworks(
             query = query.order_by(Artwork.source)
         else:  # random (default)
             # Use database random function for true randomness
-            query = query.order_by(db.func.random())
+                            query = query.order_by(func.random())
         
         logger.info(f"Applied sorting: {sort_by}")
         
@@ -787,13 +791,21 @@ def get_exhibit_artworks(
                 query = query.order_by(Artwork.source)
             else:  # random (default)
                 # Use database random function for true randomness
-                query = query.order_by(db.func.random())
+                query = query.order_by(func.random())
             
             logger.info(f"Applied sorting: {sort_by}")
         except Exception as sort_error:
             logger.error(f"Error applying sorting: {sort_error}")
             # Default to random if sorting fails
-            query = query.order_by(db.func.random())
+            query = query.order_by(func.random())
+        
+        # Calculate total count BEFORE applying pagination
+        try:
+            total_count = query.count()
+            logger.info(f"Total artworks after filtering: {total_count}")
+        except Exception as count_error:
+            logger.error(f"Error counting artworks: {count_error}")
+            total_count = 0
         
         # Apply pagination
         try:
@@ -808,8 +820,8 @@ def get_exhibit_artworks(
         
         # Check if there are more artworks
         try:
-            total_count = query.count()
             has_more = (offset + limit) < total_count
+            logger.info(f"Pagination: offset={offset}, limit={limit}, total={total_count}, has_more={has_more}")
         except Exception as count_error:
             logger.error(f"Error checking for more artworks: {count_error}")
             has_more = len(artworks) == limit  # Assume more if we got a full page
