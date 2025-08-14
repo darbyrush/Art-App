@@ -14,6 +14,9 @@
         </div>
       </div>
       
+      <!-- Mobile Debug Component (only show in development) -->
+      <MobileDebug v-if="isDevelopment" />
+      
       <div class="card p-8">
         <form @submit.prevent="handleRegister" class="space-y-6">
           <div>
@@ -29,8 +32,6 @@
               placeholder="Choose a username"
             >
           </div>
-
-
 
           <div>
             <label for="password" class="block text-sm font-medium text-gray-700">
@@ -94,6 +95,7 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import MobileDebug from '@/components/MobileDebug.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -107,6 +109,7 @@ const form = ref({
 const error = ref('')
 const loading = computed(() => authStore.loading)
 const passwordsMatch = computed(() => form.value.password === form.value.confirmPassword)
+const isDevelopment = computed(() => import.meta.env.DEV)
 
 const handleRegister = async () => {
   error.value = ''

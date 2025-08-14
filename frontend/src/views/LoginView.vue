@@ -14,6 +14,12 @@
         </div>
       </div>
       
+      <!-- Mobile Debug Component (only show in development) -->
+      <MobileDebug v-if="isDevelopment" />
+      
+      <!-- Mobile Form Test Component (only show in development) -->
+      <MobileFormTest v-if="isDevelopment" />
+      
       <div class="card p-8">
         <form @submit.prevent="handleLogin" class="space-y-6">
           <div>
@@ -78,6 +84,8 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import MobileDebug from '@/components/MobileDebug.vue'
+import MobileFormTest from '@/components/MobileFormTest.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -89,6 +97,7 @@ const form = ref({
 
 const error = ref('')
 const loading = computed(() => authStore.loading)
+const isDevelopment = computed(() => import.meta.env.DEV)
 
 const handleLogin = async () => {
   error.value = ''
