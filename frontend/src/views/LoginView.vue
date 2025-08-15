@@ -31,6 +31,9 @@
               v-model="form.username"
               type="text"
               required
+              @focus="trackFieldInteraction('username', 'focus')"
+              @blur="trackFieldInteraction('username', 'blur')"
+              @input="trackFieldInteraction('username', 'input')"
               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
               placeholder="Enter your username"
             >
@@ -45,6 +48,9 @@
               v-model="form.password"
               type="password"
               required
+              @focus="trackFieldInteraction('password', 'focus')"
+              @blur="trackFieldInteraction('password', 'blur')"
+              @input="trackFieldInteraction('password', 'input')"
               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
               placeholder="Enter your password"
             >
@@ -81,11 +87,12 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import MobileDebug from '@/components/MobileDebug.vue'
 import MobileFormTest from '@/components/MobileFormTest.vue'
+import { mobileAnalytics } from '@/utils/mobileAnalytics'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -99,18 +106,87 @@ const error = ref('')
 const loading = computed(() => authStore.loading)
 const isDevelopment = computed(() => import.meta.env.DEV)
 
+// Track mobile session on component mount
+onMounted(() => {
+  if (mobileAnalytics.isProblematicDevice()) {
+    console.log('🔍 Mobile Safari iOS device detected - enhanced tracking enabled');
+  }
+});
+
 const handleLogin = async () => {
   error.value = ''
   
+  // Track login attempt with mobile analytics
+  const credentials = {
+    username: form.value.username,
+    password: form.value.password
+  };
+  
   try {
+    // Track form submission start
+    mobileAnalytics.trackMobileBehavior('login_form_submit', {
+      hasUsername: !!form.value.username,
+      hasPassword: !!form.value.password,
+      formValid: form.value.username && form.value.password
+    });
+    
     const result = await authStore.login(form.value.username, form.value.password)
+    
     if (result.success) {
+      // Track successful login
+      mobileAnalytics.trackLoginAttempt(credentials, true);
+      mobileAnalytics.trackMobileBehavior('login_success', {
+        redirectTo: '/',
+        timestamp: new Date().toISOString()
+      });
+      
       router.push('/')
     } else {
+      // Track failed login
+      const loginError = new Error(result.error || 'Login failed');
+      mobileAnalytics.trackLoginAttempt(credentials, false, loginError);
+      mobileAnalytics.trackFormIssue('login', 'auth_failure', {
+        error: result.error,
+        username: form.value.username
+      });
+      
       error.value = result.error || 'Login failed. Please try again.'
     }
   } catch (err) {
+    // Track unexpected errors
+    mobileAnalytics.trackLoginAttempt(credentials, false, err);
+    mobileAnalytics.trackFormIssue('login', 'unexpected_error', {
+      error: err.message || err.toString(),
+      errorType: err.name || 'Unknown',
+      stack: err.stack
+    });
+    mobileAnalytics.trackMobileError(err, {
+      component: 'LoginView',
+      action: 'handleLogin',
+      formData: { username: form.value.username }
+    });
+    
     error.value = 'An error occurred. Please try again.'
   }
 }
+
+// Track form field interactions
+const trackFieldInteraction = (fieldName, action) => {
+  mobileAnalytics.trackMobileBehavior('form_field_interaction', {
+    field: fieldName,
+    action: action, // 'focus', 'blur', 'input', 'validation'
+    hasValue: !!form.value[fieldName],
+    timestamp: new Date().toISOString()
+  });
+};
+
+// Track form validation
+const trackValidation = (fieldName, isValid, errorMessage = '') => {
+  mobileAnalytics.trackFormIssue('login', 'validation_error', {
+    field: fieldName,
+    isValid,
+    errorMessage,
+    value: form.value[fieldName]
+  });
+};
 </script> 
