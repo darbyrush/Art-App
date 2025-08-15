@@ -175,6 +175,9 @@ def auth_login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
     except ImportError as e:
         logger.error(f"Import error in login: {e}")
         raise HTTPException(status_code=500, detail="Service temporarily unavailable")
+    except HTTPException:
+        # Re-raise HTTPExceptions without modification
+        raise
     except Exception as e:
         logger.error(f"Login error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -214,6 +217,9 @@ def auth_register(user: UserCreate, db: Session = Depends(get_db)):
     except ImportError as e:
         logger.error(f"Import error in register: {e}")
         raise HTTPException(status_code=500, detail="Service temporarily unavailable")
+    except HTTPException:
+        # Re-raise HTTPExceptions without modification
+        raise
     except Exception as e:
         logger.error(f"Registration error: {e}")
         logger.error(f"Error type: {type(e)}")
