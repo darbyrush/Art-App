@@ -5,10 +5,7 @@ from sqlalchemy import func, and_, text
 from database.models import User, Artwork, UserLike, UserRating, UserNote, Board, BoardArtwork, ImageCache
 from api.schemas import UserCreate, UserResponse, UserUpdate, ArtworkResponse, BoardCreate, BoardUpdate, BoardResponse, BoardArtworkCreate, BoardArtworkResponse
 from api.auth import get_password_hash, verify_password
-from api.cache import cache_user_by_username, cache_artwork_by_id, invalidate_user_cache, invalidate_artwork_cache
 from datetime import datetime, timedelta
-import base64
-from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +45,8 @@ class UserService:
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
-    @cache_user_by_username(ttl=600)
     def get_user_by_username(self, db: Session, username: str) -> Optional[User]:
-        """Get user by username with caching"""
+        """Get user by username"""
         try:
             logger.info(f"Looking up user by username: {username}")
             result = db.query(User).filter(User.username == username).first()
@@ -193,9 +189,8 @@ class ArtworkService:
         
         return query.all()
 
-    @cache_artwork_by_id(ttl=1800)
     def get_artwork_by_id(self, db: Session, artwork_id: str) -> Optional[Artwork]:
-        """Get artwork by ID with caching"""
+        """Get artwork by ID"""
         return db.query(Artwork).filter(Artwork.id == artwork_id).first()
 
     def get_random_artwork(self, db: Session, sources: Optional[str] = None) -> Optional[Artwork]:

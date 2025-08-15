@@ -25,8 +25,6 @@ from api.schemas import (
 )
 from api.services import UserService
 from api.auth import get_current_user, create_access_token, get_password_hash
-from api.cache import cache_service, get_cache_stats
-from api.middleware import rate_limit_middleware, security_middleware, performance_middleware
 
 logging.info("✅ Using production import paths")
 
@@ -100,22 +98,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add custom middleware for scaling
-@app.middleware("http")
-async def rate_limit_middleware_handler(request: Request, call_next):
-    """Rate limiting middleware"""
-    return await rate_limit_middleware(request, call_next)
-
-@app.middleware("http")
-async def security_middleware_handler(request: Request, call_next):
-    """Security middleware"""
-    return await security_middleware(request, call_next)
-
-@app.middleware("http")
-async def performance_middleware_handler(request: Request, call_next):
-    """Performance monitoring middleware"""
-    return await performance_middleware(request, call_next)
-
 # Add CORS preflight handler
 @app.options("/{full_path:path}")
 async def cors_preflight(request: Request, full_path: str):
@@ -161,12 +143,6 @@ async def startup_event():
         except Exception as e:
             logger.warning(f"⚠️ Database initialization failed: {e}")
         
-        # Log cache status
-        if cache_service.enabled:
-            logger.info("✅ Redis cache enabled and connected")
-        else:
-            logger.warning("⚠️ Redis cache disabled - using fallback")
-        
         logger.info("🎯 API ready for 50+ concurrent users")
         
     except Exception as e:
@@ -209,13 +185,13 @@ async def health_check():
         db.close()
         
         # Check cache status
-        cache_status = "enabled" if cache_service.enabled else "disabled"
+        # cache_status = "enabled" if cache_service.enabled else "disabled" # Removed cache_service
         
         return {
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
             "database": "connected",
-            "cache": cache_status,
+            "cache": "disabled",
             "version": "1.0.0",
             "scaling": "optimized_for_50_users"
         }
@@ -226,20 +202,6 @@ async def health_check():
             "error": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }
-
-# Cache statistics endpoint
-@app.get("/cache/stats")
-async def cache_stats():
-    """Get cache statistics for monitoring"""
-    try:
-        stats = get_cache_stats()
-        return {
-            "cache_stats": stats,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Cache stats error: {e}")
-        return {"error": str(e)}
 
 # Performance monitoring endpoint
 @app.get("/performance")
@@ -260,8 +222,8 @@ async def performance_metrics():
                 "invalid": pool_info.invalid
             },
             "cache": {
-                "enabled": cache_service.enabled,
-                "connected": cache_service.redis_client is not None
+                "enabled": False,
+                "message": "Redis cache disabled - using direct database queries"
             },
             "timestamp": datetime.utcnow().isoformat()
         }
