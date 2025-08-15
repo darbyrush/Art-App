@@ -3,9 +3,9 @@ from typing import List, Optional, Dict
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, text
 from database.models import User, Artwork, UserLike, UserRating, UserNote, Board, BoardArtwork, ImageCache
-from schemas import UserCreate, UserResponse, UserUpdate, ArtworkResponse, BoardCreate, BoardUpdate, BoardResponse, BoardArtworkCreate, BoardArtworkResponse
-from auth import get_password_hash, verify_password
-from cache import cache_user_by_username, cache_artwork_by_id, invalidate_user_cache, invalidate_artwork_cache
+from api.schemas import UserCreate, UserResponse, UserUpdate, ArtworkResponse, BoardCreate, BoardUpdate, BoardResponse, BoardArtworkCreate, BoardArtworkResponse
+from api.auth import get_password_hash, verify_password
+from api.cache import cache_user_by_username, cache_artwork_by_id, invalidate_user_cache, invalidate_artwork_cache
 from datetime import datetime, timedelta
 import base64
 from io import BytesIO
@@ -16,25 +16,52 @@ class UserService:
     def create_user(self, db: Session, user: UserCreate) -> UserResponse:
         """Create a new user"""
         try:
+            logger.info(f"Creating user: {user.username}")
             hashed_password = get_password_hash(user.password)
+            logger.info("Password hashed successfully")
+            
             db_user = User(
                 username=user.username,
                 email=user.email,
                 hashed_password=hashed_password
             )
+            logger.info("User object created")
+            
             db.add(db_user)
+            logger.info("User added to session")
+            
             db.commit()
+            logger.info("User committed to database")
+            
             db.refresh(db_user)
-            return UserResponse.model_validate(db_user)
+            logger.info("User refreshed from database")
+            
+            result = UserResponse.model_validate(db_user)
+            logger.info("UserResponse created successfully")
+            return result
         except Exception as e:
             db.rollback()
             logger.error(f"Error creating user: {e}")
+            logger.error(f"Error type: {type(e)}")
+            logger.error(f"Error args: {e.args}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
     @cache_user_by_username(ttl=600)
     def get_user_by_username(self, db: Session, username: str) -> Optional[User]:
         """Get user by username with caching"""
-        return db.query(User).filter(User.username == username).first()
+        try:
+            logger.info(f"Looking up user by username: {username}")
+            result = db.query(User).filter(User.username == username).first()
+            logger.info(f"User lookup result: {result is not None}")
+            return result
+        except Exception as e:
+            logger.error(f"Error looking up user by username: {e}")
+            logger.error(f"Error type: {type(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise
 
     def authenticate_user(self, db: Session, username: str, password: str) -> Optional[User]:
         """Authenticate user"""

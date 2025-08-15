@@ -18,13 +18,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.models import User, UserLike, UserRating, UserNote, Board, BoardArtwork, Artwork
 from database.config import get_db, init_db, test_connection
-from schemas import (
+from api.schemas import (
     UserCreate, UserResponse, UserUpdate, UserLikeCreate, UserRatingCreate, 
     UserNoteCreate, BoardCreate, BoardResponse, BoardUpdate, BoardArtworkCreate,
     ArtworkResponse, Token
 )
-from services import UserService
-from auth import get_current_user, create_access_token, get_password_hash
+from api.services import UserService
+from api.auth import get_current_user, create_access_token, get_password_hash
 
 logging.info("✅ Using production import paths")
 
@@ -218,6 +218,10 @@ def auth_register(user: UserCreate, db: Session = Depends(get_db)):
         logger.error(f"Registration error: {e}")
         logger.error(f"Error type: {type(e)}")
         logger.error(f"Error details: {str(e)}")
+        logger.error(f"Error args: {e.args}")
+        logger.error(f"Error repr: {repr(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 # User endpoints

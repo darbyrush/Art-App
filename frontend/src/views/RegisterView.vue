@@ -120,7 +120,10 @@ const handleRegister = async () => {
   }
   
   try {
-    const result = await authStore.register(form.value.username, form.value.password)
+    const result = await authStore.register({
+      username: form.value.username,
+      password: form.value.password
+    })
     if (result.success) {
       router.push('/')
     } else {
