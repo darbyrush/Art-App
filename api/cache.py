@@ -21,6 +21,8 @@ class CacheService:
     def __init__(self):
         self.redis_client = None
         self.enabled = False
+        self._fallback_cache = {}  # In-memory fallback cache
+        self._fallback_ttl = {}    # TTL for fallback cache
         self._init_redis()
     
     def _init_redis(self):
@@ -31,6 +33,13 @@ class CacheService:
             redis_port = int(os.getenv('REDIS_PORT', 6379))
             redis_password = os.getenv('REDIS_PASSWORD')
             redis_db = int(os.getenv('REDIS_DB', 0))
+            
+            # Skip Redis if host is localhost in production (Railway)
+            if redis_host == 'localhost' and os.getenv('ENVIRONMENT') == 'production':
+                logger.info("🚫 Redis disabled in production (localhost not available)")
+                self.enabled = False
+                self.redis_client = None
+                return
             
             # Create Redis client
             self.redis_client = redis.Redis(
@@ -64,40 +73,67 @@ class CacheService:
     
     def get(self, key: str) -> Optional[Any]:
         """Get value from cache"""
-        if not self.enabled or not self.redis_client:
-            return None
+        if self.enabled and self.redis_client:
+            try:
+                data = self.redis_client.get(key)
+                if data:
+                    return pickle.loads(data)
+                return None
+            except Exception as e:
+                logger.warning(f"Redis get error for key {key}: {e}")
+                # Fall back to in-memory cache
         
-        try:
-            data = self.redis_client.get(key)
-            if data:
-                return pickle.loads(data)
-            return None
-        except Exception as e:
-            logger.warning(f"Cache get error for key {key}: {e}")
-            return None
+        # Use fallback in-memory cache
+        if key in self._fallback_cache:
+            # Check TTL
+            if time.time() < self._fallback_ttl.get(key, 0):
+                return self._fallback_cache[key]
+            else:
+                # Expired, remove it
+                del self._fallback_cache[key]
+                del self._fallback_ttl[key]
+        return None
     
     def set(self, key: str, value: Any, expire: int = 3600) -> bool:
         """Set value in cache with expiration"""
-        if not self.enabled or not self.redis_client:
-            return False
+        if self.enabled and self.redis_client:
+            try:
+                data = pickle.dumps(value)
+                result = self.redis_client.setex(key, expire, data)
+                if result:
+                    return True
+            except Exception as e:
+                logger.warning(f"Redis set error for key {key}: {e}")
         
+        # Fallback to in-memory cache
         try:
-            data = pickle.dumps(value)
-            return self.redis_client.setex(key, expire, data)
+            self._fallback_cache[key] = value
+            self._fallback_ttl[key] = time.time() + expire
+            # Clean up expired keys
+            self._cleanup_fallback_cache()
+            return True
         except Exception as e:
-            logger.warning(f"Cache set error for key {key}: {e}")
+            logger.warning(f"Fallback cache set error for key {key}: {e}")
             return False
     
     def delete(self, key: str) -> bool:
         """Delete key from cache"""
-        if not self.enabled or not self.redis_client:
-            return False
+        success = False
         
-        try:
-            return bool(self.redis_client.delete(key))
-        except Exception as e:
-            logger.warning(f"Cache delete error for key {key}: {e}")
-            return False
+        if self.enabled and self.redis_client:
+            try:
+                success = bool(self.redis_client.delete(key))
+            except Exception as e:
+                logger.warning(f"Redis delete error for key {key}: {e}")
+        
+        # Also delete from fallback cache
+        if key in self._fallback_cache:
+            del self._fallback_cache[key]
+            if key in self._fallback_ttl:
+                del self._fallback_ttl[key]
+            success = True
+            
+        return success
     
     def delete_pattern(self, pattern: str) -> int:
         """Delete all keys matching pattern"""
@@ -158,6 +194,19 @@ class CacheService:
         except Exception as e:
             logger.warning(f"Cache clear error: {e}")
             return False
+
+    def _cleanup_fallback_cache(self):
+        """Clean up expired keys from fallback cache"""
+        current_time = time.time()
+        expired_keys = [
+            key for key, expiry in self._fallback_ttl.items() 
+            if current_time > expiry
+        ]
+        for key in expired_keys:
+            if key in self._fallback_cache:
+                del self._fallback_cache[key]
+            if key in self._fallback_ttl:
+                del self._fallback_ttl[key]
 
 # Global cache instance
 cache_service = CacheService()
