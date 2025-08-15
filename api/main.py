@@ -46,6 +46,8 @@ app = FastAPI(
 cors_origins_env = os.getenv("CORS_ORIGINS", "")
 cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
 
+logger.info(f"🔍 CORS origins from environment: {cors_origins}")
+
 # Default origins for development and production
 default_origins = [
     "https://myassemblage.art",
@@ -54,12 +56,17 @@ default_origins = [
     "http://localhost:5173"
 ]
 
+logger.info(f"🔍 Default CORS origins: {default_origins}")
+
 # Vercel-Railway native connection origins
 vercel_origins = [
     "https://myassemblage.art.vercel.app",  # Vercel domain
+    "https://art-app-rosy.vercel.app",      # Your specific Vercel domain
     "https://*.vercel.app",                 # Any Vercel subdomain
     "https://*.railway.app",                # Any Railway subdomain
 ]
+
+logger.info(f"🔍 Vercel CORS origins: {vercel_origins}")
 
 # Combine all origins
 all_origins = cors_origins + default_origins + vercel_origins
@@ -72,7 +79,18 @@ for origin in all_origins:
         seen.add(origin)
         unique_origins.append(origin)
 
-logger.info(f"✅ CORS origins configured: {unique_origins}")
+# Ensure critical domains are always included
+critical_domains = [
+    "https://art-app-rosy.vercel.app",
+    "https://myassemblage.art",
+    "https://www.myassemblage.art"
+]
+
+for domain in critical_domains:
+    if domain not in unique_origins:
+        unique_origins.append(domain)
+
+logger.info(f"✅ Final CORS origins configured: {unique_origins}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -97,6 +115,32 @@ async def security_middleware_handler(request: Request, call_next):
 async def performance_middleware_handler(request: Request, call_next):
     """Performance monitoring middleware"""
     return await performance_middleware(request, call_next)
+
+# Add CORS preflight handler
+@app.options("/{full_path:path}")
+async def cors_preflight(request: Request, full_path: str):
+    """Handle CORS preflight requests"""
+    origin = request.headers.get("origin")
+    logger.info(f"🔍 CORS preflight request from origin: {origin}")
+    
+    if origin in unique_origins:
+        return Response(
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Max-Age": "86400",
+            }
+        )
+    else:
+        logger.warning(f"⚠️ CORS preflight rejected for origin: {origin}")
+        return Response(
+            status_code=400,
+            headers={"Access-Control-Allow-Origin": "*"},
+            content="Origin not allowed"
+        )
 
 # Simple startup event
 @app.on_event("startup")
