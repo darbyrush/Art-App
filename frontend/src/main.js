@@ -5,26 +5,24 @@ import router from './router'
 import './style.css'
 
 // Import Vercel Analytics for mobile debugging
-import { inject } from '@vercel/analytics'
-
-// Import error monitoring
-import { errorMonitor } from './utils/errorMonitoring.js'
+import { inject, track } from '@vercel/analytics'
 
 const app = createApp(App)
 
 // Initialize Vercel Analytics
 inject()
 
-// Initialize error monitoring before mounting
-errorMonitor.init(app, router)
-
 // Add global error handler for Vue
 app.config.errorHandler = (error, instance, info) => {
-  errorMonitor.captureError(error, {
-    type: 'vue_global_error',
+  // Track errors with Vercel Analytics
+  track('vue_error', {
+    error: error.message || error.toString(),
     component: instance?.$options?.name || 'unknown',
     info: info,
     stack: error?.stack,
+    url: window.location.href,
+    userAgent: navigator.userAgent,
+    timestamp: new Date().toISOString()
   });
   
   // Log to console in development
@@ -33,38 +31,26 @@ app.config.errorHandler = (error, instance, info) => {
   }
 }
 
-// Add global property for error monitoring
-app.config.globalProperties.$errorMonitor = errorMonitor
-
-// Add global error boundary wrapper
-app.config.globalProperties.$withErrorBoundary = (component) => {
-  return {
-    components: { ErrorBoundary: () => import('./components/ErrorBoundary.vue') },
-    template: `
-      <ErrorBoundary>
-        <component :is="component" v-bind="$attrs" />
-      </ErrorBoundary>
-    `,
-    setup() {
-      return { component }
-    }
-  }
-}
-
 app.use(createPinia())
 app.use(router)
 
-// Add performance monitoring
+// Add performance monitoring with Vercel Analytics
 if ('performance' in window) {
   // Monitor page load performance
   window.addEventListener('load', () => {
     const perf = performance.getEntriesByType('navigation')[0];
     if (perf) {
-      errorMonitor.capturePerformanceMetric('Page Load Complete', 
-        perf.loadEventEnd - perf.loadEventStart);
+      track('performance_metric', {
+        name: 'Page Load Complete',
+        value: perf.loadEventEnd - perf.loadEventStart,
+        unit: 'ms'
+      });
       
-      errorMonitor.capturePerformanceMetric('DOM Content Loaded', 
-        perf.domContentLoadedEventEnd - perf.domContentLoadedEventStart);
+      track('performance_metric', {
+        name: 'DOM Content Loaded',
+        value: perf.domContentLoadedEventEnd - perf.domContentLoadedEventStart,
+        unit: 'ms'
+      });
     }
     
     // Monitor Core Web Vitals
@@ -73,10 +59,18 @@ if ('performance' in window) {
         const observer = new PerformanceObserver((list) => {
           for (const entry of list.getEntries()) {
             if (entry.name === 'first-paint') {
-              errorMonitor.capturePerformanceMetric('First Paint', entry.startTime);
+              track('performance_metric', {
+                name: 'First Paint',
+                value: entry.startTime,
+                unit: 'ms'
+              });
             }
             if (entry.name === 'first-contentful-paint') {
-              errorMonitor.capturePerformanceMetric('First Contentful Paint', entry.startTime);
+              track('performance_metric', {
+                name: 'First Contentful Paint',
+                value: entry.startTime,
+                unit: 'ms'
+              });
             }
           }
         });
@@ -88,42 +82,51 @@ if ('performance' in window) {
   });
 }
 
-// Monitor unhandled errors
+// Monitor unhandled errors with Vercel Analytics
 window.addEventListener('error', (event) => {
-  errorMonitor.captureError(event.error || event.message, {
-    type: 'window_error',
+  track('window_error', {
+    error: event.error?.message || event.message || 'Unknown error',
     filename: event.filename,
     lineno: event.lineno,
     colno: event.colno,
     stack: event.error?.stack,
+    url: window.location.href,
+    userAgent: navigator.userAgent,
+    timestamp: new Date().toISOString()
   });
 });
 
-// Monitor unhandled promise rejections
+// Monitor unhandled promise rejections with Vercel Analytics
 window.addEventListener('unhandledrejection', (event) => {
-  errorMonitor.captureError(event.reason, {
-    type: 'unhandled_promise_rejection',
+  track('unhandled_promise_rejection', {
+    error: event.reason?.message || event.reason?.toString() || 'Unknown rejection',
     stack: event.reason?.stack,
+    url: window.location.href,
+    userAgent: navigator.userAgent,
+    timestamp: new Date().toISOString()
   });
 });
 
-// Monitor network errors
+// Monitor network status changes
 window.addEventListener('offline', () => {
-  errorMonitor.addBreadcrumb('User went offline', 'network', { status: 'offline' });
+  track('network_status', { status: 'offline' });
 });
 
 window.addEventListener('online', () => {
-  errorMonitor.addBreadcrumb('User came back online', 'network', { status: 'online' });
+  track('network_status', { status: 'online' });
 });
 
-// Monitor visibility changes (user switching tabs)
+// Monitor page visibility changes
 document.addEventListener('visibilitychange', () => {
-  errorMonitor.addBreadcrumb(`Page ${document.hidden ? 'hidden' : 'visible'}`, 'user_behavior');
+  track('page_visibility', { 
+    hidden: document.hidden,
+    url: window.location.href
+  });
 });
 
 // Monitor beforeunload (user leaving page)
 window.addEventListener('beforeunload', () => {
-  errorMonitor.addBreadcrumb('User leaving page', 'user_behavior', { 
+  track('page_unload', { 
     url: window.location.href,
     timestamp: new Date().toISOString()
   });
@@ -133,6 +136,6 @@ app.mount('#app')
 
 // Export for debugging
 if (import.meta.env.DEV) {
-  window.errorMonitor = errorMonitor;
-  console.log('🔍 Error monitoring initialized. Access via window.errorMonitor');
+  window.vercelTrack = track;
+  console.log('🔍 Vercel Analytics initialized. Access via window.vercelTrack');
 } 

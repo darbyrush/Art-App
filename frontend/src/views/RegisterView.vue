@@ -105,7 +105,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import MobileDebug from '@/components/MobileDebug.vue'
-import { mobileAnalytics } from '@/utils/mobileAnalytics'
+import { track } from '@vercel/analytics'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -123,9 +123,15 @@ const isDevelopment = computed(() => import.meta.env.DEV)
 
 // Track mobile session on component mount
 onMounted(() => {
-  if (mobileAnalytics.isProblematicDevice()) {
-    console.log('🔍 Mobile Safari iOS device detected - enhanced tracking enabled');
-  }
+  // Track page view
+  track('page_view', {
+    page: 'register',
+    url: window.location.href,
+    userAgent: navigator.userAgent,
+    isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+    isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent),
+    isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent)
+  });
 });
 
 const handleRegister = async () => {
@@ -133,16 +139,17 @@ const handleRegister = async () => {
   
   if (!passwordsMatch.value) {
     // Track password mismatch error
-    mobileAnalytics.trackFormIssue('register', 'password_mismatch', {
+    track('register_password_mismatch', {
       passwordLength: form.value.password?.length || 0,
-      confirmPasswordLength: form.value.confirmPassword?.length || 0
+      confirmPasswordLength: form.value.confirmPassword?.length || 0,
+      userAgent: navigator.userAgent
     });
     
     error.value = 'Passwords do not match.'
     return
   }
   
-  // Track registration attempt with mobile analytics
+  // Track registration attempt
   const credentials = {
     username: form.value.username,
     password: form.value.password
@@ -150,12 +157,16 @@ const handleRegister = async () => {
   
   try {
     // Track form submission start
-    mobileAnalytics.trackMobileBehavior('register_form_submit', {
+    track('register_form_submit', {
       hasUsername: !!form.value.username,
       hasPassword: !!form.value.password,
       hasConfirmPassword: !!form.value.confirmPassword,
       passwordsMatch: passwordsMatch.value,
-      formValid: form.value.username && form.value.password && passwordsMatch.value
+      formValid: form.value.username && form.value.password && passwordsMatch.value,
+      userAgent: navigator.userAgent,
+      isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+      isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent),
+      isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent)
     });
     
     const result = await authStore.register({
@@ -165,36 +176,34 @@ const handleRegister = async () => {
     
     if (result.success) {
       // Track successful registration
-      mobileAnalytics.trackRegistrationAttempt(credentials, true);
-      mobileAnalytics.trackMobileBehavior('register_success', {
+      track('register_success', {
+        username: form.value.username,
         redirectTo: '/',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent
       });
       
       router.push('/')
     } else {
       // Track failed registration
-      const registerError = new Error(result.error || 'Registration failed');
-      mobileAnalytics.trackRegistrationAttempt(credentials, false, registerError);
-      mobileAnalytics.trackFormIssue('register', 'auth_failure', {
-        error: result.error,
-        username: form.value.username
+      track('register_failure', {
+        username: form.value.username,
+        error: result.error || 'Registration failed',
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent
       });
       
       error.value = result.error || 'Registration failed. Please try again.'
     }
   } catch (err) {
     // Track unexpected errors
-    mobileAnalytics.trackRegistrationAttempt(credentials, false, err);
-    mobileAnalytics.trackFormIssue('register', 'unexpected_error', {
+    track('register_error', {
+      username: form.value.username,
       error: err.message || err.toString(),
       errorType: err.name || 'Unknown',
-      stack: err.stack
-    });
-    mobileAnalytics.trackMobileError(err, {
-      component: 'RegisterView',
-      action: 'handleRegister',
-      formData: { username: form.value.username }
+      stack: err.stack,
+      timestamp: new Date().toISOString(),
+      userAgent: navigator.userAgent
     });
     
     error.value = 'An error occurred. Please try again.'
@@ -203,21 +212,23 @@ const handleRegister = async () => {
 
 // Track form field interactions
 const trackFieldInteraction = (fieldName, action) => {
-  mobileAnalytics.trackMobileBehavior('form_field_interaction', {
+  track('form_field_interaction', {
     field: fieldName,
     action: action, // 'focus', 'blur', 'input', 'validation'
     hasValue: !!form.value[fieldName],
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    userAgent: navigator.userAgent
   });
 };
 
 // Track form validation
 const trackValidation = (fieldName, isValid, errorMessage = '') => {
-  mobileAnalytics.trackFormIssue('register', 'validation_error', {
+  track('form_validation', {
     field: fieldName,
     isValid,
     errorMessage,
-    value: form.value[fieldName]
+    value: form.value[fieldName],
+    userAgent: navigator.userAgent
   });
 };
 </script> 

@@ -151,15 +151,40 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { mobileAnalytics } from '@/utils/mobileAnalytics'
+import { track } from '@vercel/analytics'
 
 const isExpanded = ref(false)
 const recentEvents = ref([])
 const performanceMetrics = ref({})
 
-// Computed properties
-const deviceStatus = computed(() => mobileAnalytics.getDeviceStatus())
-const deviceInfo = computed(() => deviceStatus.value.deviceInfo)
+// Computed properties for device detection
+const deviceInfo = computed(() => ({
+  userAgent: navigator.userAgent,
+  platform: navigator.platform,
+  language: navigator.language,
+  cookieEnabled: navigator.cookieEnabled,
+  doNotTrack: navigator.doNotTrack,
+  screenWidth: screen.width,
+  screenHeight: screen.height,
+  viewportWidth: window.innerWidth,
+  viewportHeight: window.innerHeight,
+  deviceMemory: navigator.deviceMemory || 'unknown',
+  hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
+  maxTouchPoints: navigator.maxTouchPoints || 0,
+  connection: getConnectionInfo(),
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+  isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent),
+  isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent)
+}))
+
+const deviceStatus = computed(() => ({
+  isMobile: deviceInfo.value.isMobile,
+  isSafari: deviceInfo.value.isSafari,
+  isIOS: deviceInfo.value.isIOS,
+  deviceInfo: deviceInfo.value
+}))
+
 const connectionInfo = computed(() => deviceInfo.value.connection || {})
 
 // Methods
@@ -186,21 +211,33 @@ const addEvent = (action, details = '') => {
 
 const testFormInteraction = () => {
   addEvent('Form Test', 'Simulated form interaction')
-  mobileAnalytics.trackMobileBehavior('debug_test', { testType: 'form_interaction' })
+  track('debug_test', { testType: 'form_interaction' })
 }
 
 const testNetwork = () => {
   addEvent('Network Test', 'Simulated network test')
-  mobileAnalytics.trackMobileBehavior('debug_test', { testType: 'network' })
+  track('debug_test', { testType: 'network' })
 }
 
 const testPerformance = () => {
   addEvent('Performance Test', 'Simulated performance test')
-  mobileAnalytics.trackMobileBehavior('debug_test', { testType: 'performance' })
+  track('debug_test', { testType: 'performance' })
 }
 
 const clearEvents = () => {
   recentEvents.value = []
+}
+
+const getConnectionInfo = () => {
+  if ('connection' in navigator) {
+    return {
+      effectiveType: navigator.connection.effectiveType,
+      downlink: navigator.connection.downlink,
+      rtt: navigator.connection.rtt,
+      saveData: navigator.connection.saveData
+    }
+  }
+  return 'Not supported'
 }
 
 const updatePerformanceMetrics = () => {
@@ -227,9 +264,20 @@ onMounted(() => {
   // Add initial event
   addEvent('Debug Panel Mounted', 'Component loaded successfully')
   
+  // Track debug panel mount
+  track('debug_panel_mount', {
+    deviceInfo: deviceInfo.value,
+    userAgent: navigator.userAgent
+  })
+  
   // Listen for mobile analytics events
-  if (mobileAnalytics.isProblematicDevice()) {
+  if (deviceInfo.value.isMobile && deviceInfo.value.isSafari && deviceInfo.value.isIOS) {
     addEvent('Problematic Device Detected', 'Mobile Safari iOS - Enhanced tracking enabled')
+    track('problematic_device_detected', {
+      device: 'iOS',
+      browser: 'Safari',
+      userAgent: navigator.userAgent
+    })
   }
 })
 </script>
