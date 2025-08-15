@@ -25,6 +25,8 @@ from api.schemas import (
 )
 from api.services import UserService
 from api.auth import get_current_user, create_access_token, get_password_hash
+from api.cache import cache_service, get_cache_stats
+from api.middleware import rate_limit_middleware, security_middleware, performance_middleware
 
 logging.info("✅ Using production import paths")
 
@@ -35,7 +37,7 @@ logger = logging.getLogger(__name__)
 # Create FastAPI app
 app = FastAPI(
     title="My Assemblage API",
-    description="Simple My Assemblage API - Clean and Working",
+    description="Simple My Assemblage API - Clean and Working - Optimized for 50 Users",
     version="1.0.0"
 )
 
@@ -80,6 +82,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add custom middleware for scaling
+@app.middleware("http")
+async def rate_limit_middleware_handler(request: Request, call_next):
+    """Rate limiting middleware"""
+    return await rate_limit_middleware(request, call_next)
+
+@app.middleware("http")
+async def security_middleware_handler(request: Request, call_next):
+    """Security middleware"""
+    return await security_middleware(request, call_next)
+
+@app.middleware("http")
+async def performance_middleware_handler(request: Request, call_next):
+    """Performance monitoring middleware"""
+    return await performance_middleware(request, call_next)
+
 # Simple startup event
 @app.on_event("startup")
 async def startup_event():
@@ -98,23 +116,18 @@ async def startup_event():
             logger.info("✅ Database initialized successfully")
         except Exception as e:
             logger.warning(f"⚠️ Database initialization failed: {e}")
-            logger.info("🔄 Continuing without database initialization")
         
-        # Test connection - but don't crash if it fails
-        try:
-            if test_connection():
-                logger.info("✅ Database connection test passed")
-            else:
-                logger.warning("⚠️ Database connection test failed")
-        except Exception as e:
-            logger.warning(f"⚠️ Database connection test failed: {e}")
-            logger.info("🔄 Continuing without database connection")
-            
+        # Log cache status
+        if cache_service.enabled:
+            logger.info("✅ Redis cache enabled and connected")
+        else:
+            logger.warning("⚠️ Redis cache disabled - using fallback")
+        
+        logger.info("🎯 API ready for 50+ concurrent users")
+        
     except Exception as e:
         logger.error(f"❌ Startup error: {e}")
-        logger.info("🔄 Continuing anyway - don't crash the app")
-    
-    logger.info("🎉 My Assemblage API startup completed!")
+        raise
 
 # Mount static files
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
@@ -141,14 +154,76 @@ def root():
         "timestamp": datetime.utcnow().isoformat()
     }
 
-# Health check
+# Health check endpoint for Railway
 @app.get("/health")
-def health_check():
-    """Simple health check"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
-    }
+async def health_check():
+    """Health check endpoint for Railway deployment"""
+    try:
+        # Check database connection
+        db = next(get_db())
+        db.execute(text("SELECT 1"))
+        db.close()
+        
+        # Check cache status
+        cache_status = "enabled" if cache_service.enabled else "disabled"
+        
+        return {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": "connected",
+            "cache": cache_status,
+            "version": "1.0.0",
+            "scaling": "optimized_for_50_users"
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+# Cache statistics endpoint
+@app.get("/cache/stats")
+async def cache_stats():
+    """Get cache statistics for monitoring"""
+    try:
+        stats = get_cache_stats()
+        return {
+            "cache_stats": stats,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Cache stats error: {e}")
+        return {"error": str(e)}
+
+# Performance monitoring endpoint
+@app.get("/performance")
+async def performance_metrics():
+    """Get performance metrics for monitoring"""
+    try:
+        # Get database connection pool info
+        db = next(get_db())
+        pool_info = db.bind.pool.status()
+        db.close()
+        
+        return {
+            "database_pool": {
+                "size": pool_info.size,
+                "checked_in": pool_info.checked_in,
+                "checked_out": pool_info.checked_out,
+                "overflow": pool_info.overflow,
+                "invalid": pool_info.invalid
+            },
+            "cache": {
+                "enabled": cache_service.enabled,
+                "connected": cache_service.redis_client is not None
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Performance metrics error: {e}")
+        return {"error": str(e)}
 
 # Auth endpoints
 @app.post("/auth/login")

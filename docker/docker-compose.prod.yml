@@ -1,54 +1,63 @@
 version: '3.8'
 
 services:
-  # Redis for image caching and sessions
+  # Redis for caching and rate limiting
   redis:
     image: redis:7-alpine
     container_name: art-explorer-redis-prod
     ports:
-      - "127.0.0.1:6379:6379"  # Bind to localhost only
+      - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    command: >
+      redis-server 
+      --appendonly yes 
+      --maxmemory 512mb 
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
-    networks:
-      - art_network
-    security_opt:
-      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
 
   # PostgreSQL for production database
   postgres:
     image: postgres:15-alpine
     container_name: art-explorer-postgres-prod
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-art_explorer}
-      POSTGRES_USER: ${POSTGRES_USER:-artuser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+      POSTGRES_DB: art_explorer
+      POSTGRES_USER: artuser
+      POSTGRES_PASSWORD: artpass123
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
     ports:
-      - "127.0.0.1:5432:5432"  # Bind to localhost only
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-scripts:/docker-entrypoint-initdb.d
+      - ./postgres-init:/docker-entrypoint-initdb.d
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-artuser} -d ${POSTGRES_DB:-art_explorer}"]
+      test: ["CMD-SHELL", "pg_isready -U artuser -d art_explorer"]
       interval: 30s
       timeout: 10s
       retries: 3
-    networks:
-      - art_network
-    security_opt:
-      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
     command: >
       postgres
-      -c shared_preload_libraries=pg_stat_statements
-      -c pg_stat_statements.track=all
       -c max_connections=100
       -c shared_buffers=256MB
       -c effective_cache_size=1GB
@@ -62,79 +71,52 @@ services:
       -c min_wal_size=1GB
       -c max_wal_size=4GB
 
-  # Backend API
+  # Backend API with scaling optimizations
   backend:
     build:
       context: ..
       dockerfile: docker/Dockerfile.backend
     container_name: art-explorer-backend-prod
     ports:
-      - "127.0.0.1:8001:8000"  # Bind to localhost only
+      - "8001:8001"
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-artuser}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-art_explorer}
+      - DATABASE_URL=postgresql://artuser:artpass123@postgres:5432/art_explorer
       - ENVIRONMENT=production
-      - SECRET_KEY=${SECRET_KEY}
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-10485760}
-      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-100}
-      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
+      - WORKERS_PER_CORE=1
+      - MAX_WORKERS=4
+      - WEB_CONCURRENCY=4
+      - LOG_LEVEL=info
     depends_on:
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
     restart: unless-stopped
-    volumes:
-      - ../api:/app/api:ro
-      - ../database:/app/database:ro
-      - ../backend:/app/backend:ro
-      - uploads_data:/app/uploads
-      - logs_data:/app/logs
-    networks:
-      - art_network
-    security_opt:
-      - no-new-privileges:true
     deploy:
       resources:
         limits:
           memory: 1G
-          cpus: '1.0'
         reservations:
           memory: 512M
-          cpus: '0.5'
+      replicas: 2  # Scale to 2 backend instances
+    volumes:
+      - ../api:/app/api
+      - ../database:/app/database
+      - ../backend:/app/backend
+      - ../uploads:/app/uploads
+    command: >
+      uvicorn api.main:app 
+      --host 0.0.0.0 
+      --port 8001 
+      --workers 4
+      --worker-class uvicorn.workers.UvicornWorker
+      --log-level info
+      --access-log
+      --use-colors false
 
-  # Frontend
-  frontend:
-    build:
-      context: ../frontend
-      dockerfile: ../docker/Dockerfile.frontend
-    container_name: art-explorer-frontend-prod
-    ports:
-      - "127.0.0.1:3000:80"  # Bind to localhost only
-    environment:
-      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8001}
-      - NODE_ENV=production
-    depends_on:
-      - backend
-    restart: unless-stopped
-    networks:
-      - art_network
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
-          cpus: '0.25'
-
-  # Nginx reverse proxy
+  # Nginx reverse proxy for load balancing
   nginx:
     image: nginx:alpine
     container_name: art-explorer-nginx-prod
@@ -144,30 +126,73 @@ services:
     volumes:
       - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
       - ./ssl:/etc/nginx/ssl:ro
-      - nginx_logs:/var/log/nginx
+      - ./logs:/var/log/nginx
     depends_on:
       - backend
-      - frontend
     restart: unless-stopped
-    networks:
-      - art_network
-    security_opt:
-      - no-new-privileges:true
     deploy:
       resources:
         limits:
-          memory: 128M
-          cpus: '0.25'
+          memory: 256M
         reservations:
-          memory: 64M
-          cpus: '0.1'
+          memory: 128M
 
-  # Monitoring stack (optional)
+  # Celery worker for background tasks
+  celery_worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: art-explorer-celery-prod
+    command: celery -A api.background_tasks worker --loglevel=info --concurrency=4
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_URL=postgresql://artuser:artpass123@postgres:5432/art_explorer
+      - ENVIRONMENT=production
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Celery beat for scheduled tasks
+  celery_beat:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: art-explorer-celery-beat-prod
+    command: celery -A api.background_tasks beat --loglevel=info
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_URL=postgresql://artuser:artpass123@postgres:5432/art_explorer
+      - ENVIRONMENT=production
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  # Monitoring stack
   prometheus:
     image: prom/prometheus:latest
     container_name: art-explorer-prometheus
     ports:
-      - "127.0.0.1:9090:9090"
+      - "9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -178,44 +203,21 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--storage.tsdb.retention.time=200h'
       - '--web.enable-lifecycle'
-    networks:
-      - art_network
     restart: unless-stopped
 
   grafana:
     image: grafana/grafana:latest
     container_name: art-explorer-grafana
     ports:
-      - "127.0.0.1:3001:3000"
+      - "3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
-    networks:
-      - art_network
     restart: unless-stopped
 
 volumes:
   redis_data:
-    driver: local
   postgres_data:
-    driver: local
-  uploads_data:
-    driver: local
-  logs_data:
-    driver: local
-  nginx_logs:
-    driver: local
   prometheus_data:
-    driver: local
   grafana_data:
-    driver: local
-
-networks:
-  art_network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16

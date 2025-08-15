@@ -9,6 +9,17 @@
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5,
-    "numReplicas": 1
+    "numReplicas": 2,
+    "resources": {
+      "cpu": "1.0",
+      "memory": "1GB"
+    },
+    "environment": {
+      "ENVIRONMENT": "production",
+      "WORKERS_PER_CORE": "1",
+      "MAX_WORKERS": "4",
+      "WEB_CONCURRENCY": "4",
+      "LOG_LEVEL": "info"
+    }
   }
 }

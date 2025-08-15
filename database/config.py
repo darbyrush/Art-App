@@ -98,64 +98,47 @@ if DATABASE_URL:
 else:
     logger.warning("DATABASE_URL environment variable not found")
 
-# Create engine with appropriate configuration
-if DATABASE_URL.startswith("sqlite"):
-    # SQLite configuration for local development
-    engine = create_engine(
-        DATABASE_URL,
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
-        echo=False
-    )
-    logger.info("Using SQLite database for development")
-else:
-    # PostgreSQL configuration for production - Railway optimized
-    try:
-        # Railway-specific optimizations
+# Database engine configuration for scaling
+def create_engine_with_pooling():
+    """Create database engine with connection pooling for production scaling"""
+    if DATABASE_URL and DATABASE_URL.startswith(('postgresql://', 'postgres://')):
+        # Production PostgreSQL with connection pooling
         engine = create_engine(
             DATABASE_URL,
-            pool_pre_ping=True,
-            pool_recycle=600,      # Recycle connections every 10 minutes (Railway friendly)
-            pool_size=5,           # Reduced pool size for Railway (more conservative)
-            max_overflow=10,       # Reduced overflow for Railway
-            pool_timeout=60,       # Increased connection timeout for Railway
-            echo=False,
+            pool_size=20,  # Increased from default for 50 users
+            max_overflow=30,  # Allow up to 30 additional connections
+            pool_pre_ping=True,  # Verify connections before use
+            pool_recycle=3600,  # Recycle connections every hour
+            pool_timeout=30,  # Wait up to 30 seconds for available connection
+            echo=False,  # Disable SQL logging in production
+            # Performance optimizations
             connect_args={
-                "connect_timeout": 30,        # Increased from 10s to 30s for Railway
-                "application_name": "art_app_railway",
-                "options": "-c timezone=UTC -c statement_timeout=60000 -c idle_in_transaction_session_timeout=600000"
+                "connect_timeout": 10,
+                "application_name": "art_explorer_api",
+                "options": "-c statement_timeout=30000 -c idle_in_transaction_session_timeout=60000"
             }
         )
-        logger.info("Using PostgreSQL database for Railway production")
-        
-        # Test the connection immediately to catch issues early
-        try:
-            from sqlalchemy import text
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-                conn.commit()
-            logger.info("✅ Initial database connection test successful")
-        except Exception as e:
-            logger.warning(f"⚠️ Initial connection test failed: {e}")
-            # Continue anyway - connection might work later
-            
-    except Exception as e:
-        logger.error(f"Failed to create PostgreSQL engine: {e}")
-        logger.info("Falling back to SQLite for development")
-        DATABASE_URL = "sqlite:///./art_explorer.db"
+        logger.info("✅ Created PostgreSQL engine with connection pooling for scaling")
+        return engine
+    else:
+        # SQLite for development
         engine = create_engine(
             DATABASE_URL,
             poolclass=StaticPool,
-            connect_args={"check_same_thread": False},
-            echo=False
+            connect_args={"check_same_thread": False}
         )
+        logger.info("✅ Created SQLite engine for development")
+        return engine
 
-# Create session factory
+# Create the engine
+engine = create_engine_with_pooling()
+
+# Session factory with optimized settings
 SessionLocal = sessionmaker(
-    autocommit=False, 
-    autoflush=False, 
+    autocommit=False,
+    autoflush=False,
     bind=engine,
-    expire_on_commit=False
+    expire_on_commit=False  # Prevent lazy loading issues
 )
 
 def get_db():
