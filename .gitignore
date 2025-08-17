@@ -142,6 +142,7 @@ temp/
 *.db
 *.sqlite
 *.sqlite3
+art_explorer.db
 
 # Upload directories (keep structure, ignore content)
 uploads/profile_pictures/*
