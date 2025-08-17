@@ -10,6 +10,9 @@ config.json
 *.pem
 *.p12
 
+# User data
+users.json
+
 # Python
 __pycache__/
 *.py[cod]
@@ -143,6 +146,7 @@ temp/
 *.sqlite
 *.sqlite3
 art_explorer.db
+art_api_cache.sqlite
 
 # Upload directories (keep structure, ignore content)
 uploads/profile_pictures/*
