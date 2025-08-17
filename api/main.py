@@ -263,21 +263,78 @@ def auth_login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
         logger.error(f"Login error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+# Simple in-memory rate limiting for registration
+registration_attempts = {}
+
+def check_registration_rate_limit(client_ip: str) -> bool:
+    """Check if registration attempts are within rate limit"""
+    current_time = time.time()
+    if client_ip not in registration_attempts:
+        registration_attempts[client_ip] = []
+    
+    # Remove attempts older than 1 hour
+    registration_attempts[client_ip] = [
+        attempt_time for attempt_time in registration_attempts[client_ip] 
+        if current_time - attempt_time < 3600
+    ]
+    
+    # Allow max 5 attempts per hour
+    if len(registration_attempts[client_ip]) >= 5:
+        return False
+    
+    registration_attempts[client_ip].append(current_time)
+    return True
+
 @app.post("/auth/register")
-def auth_register(user: UserCreate, db: Session = Depends(get_db)):
-    """Simple register endpoint"""
+def auth_register(user: UserCreate, request: Request, db: Session = Depends(get_db)):
+    """Simple register endpoint with rate limiting"""
     try:
+        # Get client IP for rate limiting
+        client_ip = request.client.host if request.client else "unknown"
+        
+        # Log registration attempt
+        logger.info(f"Registration attempt from IP: {client_ip}, username: {user.username}")
+        
+        # Check rate limit
+        if not check_registration_rate_limit(client_ip):
+            logger.warning(f"Rate limit exceeded for IP: {client_ip}")
+            raise HTTPException(
+                status_code=429, 
+                detail="Too many registration attempts. Please try again later."
+            )
+        
+        # Validate input data
+        if not user.username or len(user.username.strip()) < 3:
+            logger.warning(f"Invalid username from IP {client_ip}: {user.username}")
+            raise HTTPException(status_code=400, detail="Username must be at least 3 characters long")
+        
+        if not user.password or len(user.password) < 6:
+            logger.warning(f"Invalid password from IP {client_ip}: too short")
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters long")
+        
+        # Clean username (remove whitespace)
+        username = user.username.strip()
+        
         user_service = UserService()
         
         # Check if user exists
-        db_user = user_service.get_user_by_username(db, username=user.username)
+        db_user = user_service.get_user_by_username(db, username=username)
         if db_user:
+            logger.warning(f"Username already exists from IP {client_ip}: {username}")
             raise HTTPException(status_code=400, detail="Username already registered")
+        
+        # Validate email if provided
+        if user.email:
+            # Check if email is already registered
+            existing_email_user = db.query(User).filter(User.email == user.email).first()
+            if existing_email_user:
+                logger.warning(f"Email already exists from IP {client_ip}: {user.email}")
+                raise HTTPException(status_code=400, detail="Email already registered")
         
         # Create user
         hashed_password = get_password_hash(user.password)
         db_user = User(
-            username=user.username,
+            username=username,
             email=user.email,
             hashed_password=hashed_password
         )
@@ -285,8 +342,11 @@ def auth_register(user: UserCreate, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(db_user)
         
+        # Log successful registration
+        logger.info(f"User registered successfully: {username} from IP {client_ip}")
+        
         # Create token
-        access_token = create_access_token(data={"sub": user.username})
+        access_token = create_access_token(data={"sub": db_user.username})
         return {
             "access_token": access_token,
             "user": {
@@ -295,9 +355,6 @@ def auth_register(user: UserCreate, db: Session = Depends(get_db)):
                 "email": db_user.email
             }
         }
-    except ImportError as e:
-        logger.error(f"Import error in register: {e}")
-        raise HTTPException(status_code=500, detail="Service temporarily unavailable")
     except HTTPException:
         # Re-raise HTTPExceptions without modification
         raise
@@ -309,7 +366,8 @@ def auth_register(user: UserCreate, db: Session = Depends(get_db)):
         logger.error(f"Error repr: {repr(e)}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error during registration")
 
 # User endpoints
 @app.get("/users/me", response_model=UserResponse)
@@ -473,19 +531,33 @@ def get_user_boards(current_user: User = Depends(get_current_user), db: Session 
     try:
         boards = db.query(Board).filter(Board.user_id == current_user.id).all()
         
-        # Add artwork count to each board
+        # Create response list with artwork count for each board
+        response_boards = []
         for board in boards:
-            board.artwork_count = db.query(BoardArtwork).filter(BoardArtwork.board_id == board.id).count()
+            artwork_count = db.query(BoardArtwork).filter(BoardArtwork.board_id == board.id).count()
+            response_data = {
+                "id": board.id,
+                "user_id": board.user_id,
+                "name": board.name,
+                "description": board.description,
+                "is_public": board.is_public,
+                "created_at": board.created_at,
+                "updated_at": board.updated_at,
+                "artwork_count": artwork_count
+            }
+            response_boards.append(BoardResponse(**response_data))
         
-        return boards
+        return response_boards
+        
     except Exception as e:
         logger.error(f"Error getting boards: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/boards", response_model=BoardResponse)
 def create_board(board: BoardCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Create a new board"""
     try:
+        # Create the board
         db_board = Board(
             name=board.name,
             description=board.description,
@@ -496,34 +568,58 @@ def create_board(board: BoardCreate, current_user: User = Depends(get_current_us
         db.commit()
         db.refresh(db_board)
         
-        # Add artwork count (will be 0 for new boards)
-        db_board.artwork_count = 0
+        # Create response with artwork_count set to 0
+        response_data = {
+            "id": db_board.id,
+            "user_id": db_board.user_id,
+            "name": db_board.name,
+            "description": db_board.description,
+            "is_public": db_board.is_public,
+            "created_at": db_board.created_at,
+            "updated_at": db_board.updated_at,
+            "artwork_count": 0
+        }
         
-        return db_board
+        return BoardResponse(**response_data)
+        
     except Exception as e:
         logger.error(f"Error creating board: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.get("/boards/{board_id}", response_model=BoardResponse)
-def get_board(board_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_board(board_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get a specific board"""
     try:
         board = db.query(Board).filter(Board.id == board_id, Board.user_id == current_user.id).first()
         if not board:
             raise HTTPException(status_code=404, detail="Board not found")
         
-        # Add artwork count
-        board.artwork_count = db.query(BoardArtwork).filter(BoardArtwork.board_id == board.id).count()
+        # Get artwork count
+        artwork_count = db.query(BoardArtwork).filter(BoardArtwork.board_id == board.id).count()
         
-        return board
+        # Create response with artwork_count
+        response_data = {
+            "id": board.id,
+            "user_id": board.user_id,
+            "name": board.name,
+            "description": board.description,
+            "is_public": board.is_public,
+            "created_at": board.created_at,
+            "updated_at": board.updated_at,
+            "artwork_count": artwork_count
+        }
+        
+        return BoardResponse(**response_data)
+        
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting board: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.put("/boards/{board_id}", response_model=BoardResponse)
-def update_board(board_id: int, board_update: BoardUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def update_board(board_id: str, board_update: BoardUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Update a board"""
     try:
         board = db.query(Board).filter(Board.id == board_id, Board.user_id == current_user.id).first()
@@ -540,18 +636,32 @@ def update_board(board_id: int, board_update: BoardUpdate, current_user: User = 
         db.commit()
         db.refresh(board)
         
-        # Add artwork count
-        board.artwork_count = db.query(BoardArtwork).filter(BoardArtwork.board_id == board.id).count()
+        # Get artwork count
+        artwork_count = db.query(BoardArtwork).filter(BoardArtwork.board_id == board.id).count()
         
-        return board
+        # Create response with artwork_count
+        response_data = {
+            "id": board.id,
+            "user_id": board.user_id,
+            "name": board.name,
+            "description": board.description,
+            "is_public": board.is_public,
+            "created_at": board.created_at,
+            "updated_at": board.updated_at,
+            "artwork_count": artwork_count
+        }
+        
+        return BoardResponse(**response_data)
+        
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error updating board: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.delete("/boards/{board_id}")
-def delete_board(board_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def delete_board(board_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Delete a board"""
     try:
         board = db.query(Board).filter(Board.id == board_id, Board.user_id == current_user.id).first()
@@ -568,7 +678,7 @@ def delete_board(board_id: int, current_user: User = Depends(get_current_user), 
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/boards/{board_id}/artworks", response_model=List[ArtworkResponse])
-def get_board_artworks(board_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_board_artworks(board_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get artworks in a board"""
     try:
         board = db.query(Board).filter(Board.id == board_id, Board.user_id == current_user.id).first()
@@ -591,7 +701,7 @@ def get_board_artworks(board_id: int, current_user: User = Depends(get_current_u
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/boards/{board_id}/artworks")
-def add_artwork_to_board(board_id: int, board_artwork: BoardArtworkCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def add_artwork_to_board(board_id: str, board_artwork: BoardArtworkCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Add an artwork to a board"""
     try:
         board = db.query(Board).filter(Board.id == board_id, Board.user_id == current_user.id).first()
@@ -627,7 +737,7 @@ def add_artwork_to_board(board_id: int, board_artwork: BoardArtworkCreate, curre
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.delete("/boards/{board_id}/artworks/{artwork_id}")
-def remove_artwork_from_board(board_id: int, artwork_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def remove_artwork_from_board(board_id: str, artwork_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Remove an artwork from a board"""
     try:
         board = db.query(Board).filter(Board.id == board_id, Board.user_id == current_user.id).first()
